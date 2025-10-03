@@ -82,13 +82,13 @@ export default class FFXIVCombatLogWatcher extends EventEmitter {
 
     this.watcher.on('change', (type, file) => {
       if (typeof file !== 'string') {
-        console.debug('[CombatLogWatcher] file is not string');
+        console.debug('[FFXIVCombatLogWatcher] file is not string');
         return;
       }
 
       if (!file.startsWith('Network')) {
         console.debug(
-          '[CombatLogWatcher] file does not start with Network',
+          '[FFXIVCombatLogWatcher] file does not start with Network',
         );
         return;
       }
@@ -101,14 +101,14 @@ export default class FFXIVCombatLogWatcher extends EventEmitter {
         // We reset the position in a file on either, such that a file
         // recreated with the same name will be read from the start. See
         // Issue 624.
-        console.info('[CombatLogWatcher] Create or delete event', file);
+        console.info('[FFXIVCombatLogWatcher] Create or delete event', file);
         const fullPath = path.join(this.logDir, file);
         delete this.state[fullPath];
         return;
       }
 
       if (file !== this.current) {
-        console.info('[CombatLogWatcher] New active log file', file);
+        console.info('[FFXIVCombatLogWatcher] New active log file', file);
         this.current = file;
       }
 
@@ -132,7 +132,7 @@ export default class FFXIVCombatLogWatcher extends EventEmitter {
   private async getLogDirectoryState() {
     const logs = await getSortedFiles(this.logDir, 'Network.*.log');
     if (logs.length < 1) {
-      console.debug('[CombatLogWatcher] No FFXIV logs', this.logDir);
+      console.debug('[FFXIVCombatLogWatcher] No FFXIV logs', this.logDir);
       return;
     }
 
@@ -148,7 +148,7 @@ export default class FFXIVCombatLogWatcher extends EventEmitter {
    * Process a change event receieved from the directory watcher.
    */
   private async process(file: string) {
-    console.debug('[CombatLogWatcher] process', file);
+    console.debug('[FFXIVCombatLogWatcher] process', file);
     const fullPath = path.join(this.logDir, file);
     const currentInfo = await getFileInfo(fullPath);
     const lastInfo = this.state[fullPath];
@@ -180,7 +180,7 @@ export default class FFXIVCombatLogWatcher extends EventEmitter {
    * Parse a chunk of the file of length bytes from a specified position.
    */
   private async parseFileChunk(file: string, bytes: number, position: number) {
-    console.debug('[CombatLogWatcher] parseFileChunk', file);
+    console.debug('[FFXIVCombatLogWatcher] parseFileChunk', file);
     const buffer = Buffer.alloc(bytes);
     const handle = await open(file, 'r');
     const { bytesRead } = await read(handle, buffer, 0, bytes, position);

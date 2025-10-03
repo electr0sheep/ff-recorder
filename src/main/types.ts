@@ -617,6 +617,11 @@ enum SoundAlerts {
   MANUAL_RECORDING_STOP = 'manual-recording-stop',
 }
 
+enum FFXIVLogTypes {
+  CHAT = '00',
+  ZONE_CHANGE = '265',
+}
+
 export {
   RecStatus,
   SaveStatus,
@@ -677,4 +682,5 @@ export {
   BoxDimensions,
   WowProcessEvent,
   SoundAlerts,
+  FFXIVLogTypes,
 };

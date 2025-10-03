@@ -200,6 +200,8 @@ const getBaseConfig = (cfg: ConfigService): BaseConfig => {
     recordEra: cfg.get<boolean>('recordEra'),
     eraLogPath: cfg.get<string>('eraLogPath'),
     retailPtrLogPath: cfg.get<string>('retailPtrLogPath'),
+    recordFFXIV: cfg.get<boolean>('recordFFXIV'),
+    FFXIVLogPath: cfg.get<string>('FFXIVLogPath'),
   };
 };
 

@@ -379,6 +379,8 @@ type BaseConfig = {
   eraLogPath: string;
   recordRetailPtr: boolean;
   retailPtrLogPath: string;
+  recordFFXIV: boolean;
+  FFXIVLogPath: string;
 };
 
 type ObsVideoConfig = {

@@ -1428,7 +1428,8 @@ export default class Recorder extends EventEmitter {
       item.name.startsWith('[Wow.exe]: ') ||
       item.name.startsWith('[WowT.exe]: ') ||
       item.name.startsWith('[WowB.exe]: ') ||
-      item.name.startsWith('[WowClassic.exe]: ')
+      item.name.startsWith('[WowClassic.exe]: ') ||
+      item.name.startsWith('[ffxiv_dx11.exe]: ')
     );
   }
 

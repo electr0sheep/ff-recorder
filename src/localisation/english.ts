@@ -467,6 +467,22 @@ const ENGLISH: Translations = {
   [Phrase.AddMicrophoneButtonText]: 'Microphone',
   [Phrase.AddApplicationButtonText]: 'Application',
   [Phrase.NoAudioSourcesText]: 'Add a source to record audio.',
+  [Phrase.FFXIVSettingsLabel]: 'FFXIV Settings',
+  [Phrase.SettingsPageFFXIVHeader]: 'FFXIV',
+  [Phrase.FFXIVLogPathDescription]: 'Location of the FFXIV logs folder, e.g. "%appdata%\\Advanced Combat Tracker\\FFXIVLogs".',
+  [Phrase.RecordFFXIVDescription]: 'Whether the application should record FFXIV.',
+  [Phrase.FFXIV]: 'FFXIV',
+  [Phrase.RecordFFXIVLabel]: 'Record FFXIV',
+  [Phrase.FFXIVLogPathLabel]: 'FFXIV Log Path',
+  [Phrase.InvalidFFXIVLogPathText]: 'Invalid FFXIV log path',
+  [Phrase.FFXIVRecordDungeons]: 'Record Dungeons',
+  [Phrase.FFXIVRecordTrials]: 'Record Trials',
+  [Phrase.FFXIVRecordRaids]: 'Record Raids',
+  [Phrase.FFXIVRecordAllianceRaids]: 'Record Alliance Raids',
+  [Phrase.FFXIVRecordDungeonsDescription]: 'Whether the application should record Dungeons',
+  [Phrase.FFXIVRecordTrialsDescription]: 'Whether the application should record Trials',
+  [Phrase.FFXIVRecordRaidsDescription]: 'Whether the application should record Raids',
+  [Phrase.FFXIVRecordAllianceRaidsDescription]: 'Whether the application should record Alliance Raids',
 };
 
 export default ENGLISH;

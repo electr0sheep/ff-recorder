@@ -35,8 +35,8 @@ export default class Poller extends EventEmitter {
    * Singleton instance.
    */
   private binary = app.isPackaged
-    ? path.join(process.resourcesPath, 'binaries', 'rust-ps.exe')
-    : path.join(__dirname, '../../binaries', 'rust-ps.exe');
+    ? path.join(process.resourcesPath, 'binaries', 'ffxiv-rust-ps.exe')
+    : path.join(__dirname, '../../binaries', 'ffxiv-rust-ps.exe');
 
   /**
    * Create or get the singleton.
@@ -106,16 +106,18 @@ export default class Poller extends EventEmitter {
       return;
     }
 
-    const { Retail, Classic } = parsed;
+    const { Retail, Classic, FFXIV } = parsed;
 
     const recordRetail = this.cfg.get<boolean>('recordRetail');
     const recordClassic = this.cfg.get<boolean>('recordClassic');
     const recordEra = this.cfg.get<boolean>('recordEra');
+    const recordFFXIV = this.cfg.get<boolean>('recordFFXIV');
 
     const running =
       (recordRetail && Retail) ||
       (recordClassic && Classic) ||
-      (recordEra && Classic); // Era and Classic clients share a process name.
+      (recordEra && Classic) || // Era and Classic clients share a process name.
+      (recordFFXIV && FFXIV);
 
     if (this.wowRunning === running) {
       // Nothing to emit.

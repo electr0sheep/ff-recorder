@@ -13,6 +13,7 @@ import { VideoCategory } from '../types/VideoCategory';
 import Poller from '../utils/Poller';
 import ClassicLogHandler from '../parsing/ClassicLogHandler';
 import RetailLogHandler from '../parsing/RetailLogHandler';
+import FFXIVLogHandler from 'parsing/FFXIVLogHandler';
 import Recorder from './Recorder';
 import ConfigService from '../config/ConfigService';
 import {
@@ -39,6 +40,7 @@ import LogHandler from 'parsing/LogHandler';
 import { PTTKeyPressEvent } from 'types/KeyTypesUIOHook';
 import { send } from './main';
 import DiskClient from 'storage/DiskClient';
+import FFXIVGenericLogHandler from 'parsing/FFXIVGenericLogHandler';
 
 /**
  * Manager class.
@@ -58,6 +60,7 @@ export default class Manager {
   private retailPtrLogHandler: RetailLogHandler | undefined;
   private classicLogHandler: ClassicLogHandler | undefined;
   private eraLogHandler: EraLogHandler | undefined;
+  private FFXIVLogHandler: FFXIVLogHandler | undefined;
 
   /**
    * If the config is valid or not.
@@ -188,13 +191,17 @@ export default class Manager {
    * Force a recording to stop regardless of the scenario.
    */
   public async forceStop() {
-    if (!LogHandler.activity) {
+    if (!LogHandler.activity && !FFXIVGenericLogHandler.activity) {
       console.info('[Manager] No activity to force end');
       return;
     }
 
     console.info('[Manager] Force ending activity');
-    LogHandler.forceEndActivity();
+    if (LogHandler.activity) {
+      LogHandler.forceEndActivity();
+    } else {
+      FFXIVGenericLogHandler.forceEndActivity();
+    }
   }
 
   /**
@@ -256,8 +263,10 @@ export default class Manager {
       return;
     }
 
-    const inOverrun = LogHandler.overrunning;
-    const inActivity = Boolean(LogHandler.activity);
+    const inOverrun =
+      LogHandler.overrunning || FFXIVGenericLogHandler.overrunning;
+    const inActivity =
+      Boolean(LogHandler.activity) || Boolean(FFXIVGenericLogHandler.activity);
 
     if (inOverrun) {
       this.refreshRecStatus(RecStatus.Overrunning);
@@ -328,11 +337,16 @@ export default class Manager {
    */
   private async onWowStopped() {
     console.info('[Manager] Detected WoW not running');
-    const inActivity = Boolean(LogHandler.activity);
+    const inActivity =
+      Boolean(LogHandler.activity) || Boolean(FFXIVGenericLogHandler.activity);
 
     if (inActivity) {
       console.info('[Manager] Force ending activity');
-      LogHandler.forceEndActivity();
+      if (LogHandler.activity) {
+        LogHandler.forceEndActivity();
+      } else {
+        FFXIVGenericLogHandler.forceEndActivity();
+      }
     } else {
       await this.recorder.forceStop();
     }
@@ -356,6 +370,10 @@ export default class Manager {
     LogHandler.overrunning = false;
     LogHandler.setStateChangeCallback(() => this.refreshStatus());
 
+    FFXIVGenericLogHandler.activity = undefined;
+    FFXIVGenericLogHandler.overrunning = false;
+    FFXIVGenericLogHandler.setStateChangeCallback(() => this.refreshStatus());
+
     if (!startup) {
       console.info('[Manager] Not startup, so reset log handlers');
 
@@ -364,6 +382,7 @@ export default class Manager {
         this.classicLogHandler,
         this.eraLogHandler,
         this.retailPtrLogHandler,
+        this.FFXIVLogHandler,
       ];
 
       logHandlers
@@ -374,6 +393,7 @@ export default class Manager {
       this.classicLogHandler = undefined;
       this.eraLogHandler = undefined;
       this.retailPtrLogHandler = undefined;
+      this.FFXIVLogHandler = undefined;
     }
 
     if (config.recordRetail) {
@@ -391,6 +411,10 @@ export default class Manager {
     if (config.recordRetailPtr) {
       this.retailPtrLogHandler = new RetailLogHandler(config.retailPtrLogPath);
       this.retailPtrLogHandler.setIsPtr();
+    }
+
+    if (config.recordFFXIV) {
+      this.FFXIVLogHandler = new FFXIVLogHandler(config.FFXIVLogPath);
     }
   }
 
@@ -540,6 +564,7 @@ export default class Manager {
       }
 
       LogHandler.handleManualRecordingHotKey();
+      FFXIVGenericLogHandler.handleManualRecordingHotKey();
     });
 
     // If Windows is going to sleep, we don't want to confuse OBS. It would be
@@ -548,6 +573,7 @@ export default class Manager {
     powerMonitor.on('suspend', async () => {
       console.info('[Manager] Detected Windows is going to sleep.');
       LogHandler.dropActivity();
+      FFXIVGenericLogHandler.dropActivity();
       this.poller.stop();
       await this.recorder.forceStop();
     });

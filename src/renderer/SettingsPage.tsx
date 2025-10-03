@@ -19,6 +19,7 @@ import LocaleSettings from './LocaleSettings';
 import WindowsSettings from './WindowsSettings';
 import { Phrase } from 'localisation/phrases';
 import ManualSettings from './ManualSettings';
+import FFXIVSettings from './FFXIVSettings';
 
 interface IProps {
   recorderStatus: RecStatus;
@@ -47,6 +48,9 @@ const SettingsPage: React.FC<IProps> = (props: IProps) => {
           </TabsTrigger>
           <TabsTrigger value="game">
             {getLocalePhrase(appState.language, Phrase.SettingsPageGameHeader)}
+          </TabsTrigger>
+          <TabsTrigger value="ffxiv">
+            {getLocalePhrase(appState.language, Phrase.SettingsPageFFXIVHeader)}
           </TabsTrigger>
           <TabsTrigger value="pro">
             {getLocalePhrase(appState.language, Phrase.SettingsPageProHeader)}
@@ -140,6 +144,20 @@ const SettingsPage: React.FC<IProps> = (props: IProps) => {
                 </CategoryHeading>
                 <Separator className="mt-2 mb-4" />
                 <ManualSettings appState={appState} />
+              </div>
+            </div>
+          </TabsContent>
+          <TabsContent value="ffxiv">
+            <div className="p-4 flex flex-col gap-y-8">
+              <div>
+                <CategoryHeading>
+                  {getLocalePhrase(
+                    appState.language,
+                    Phrase.FFXIVSettingsLabel,
+                  )}
+                </CategoryHeading>
+                <Separator className="mt-2 mb-4" />
+                <FFXIVSettings appState={appState} />
               </div>
             </div>
           </TabsContent>

@@ -464,6 +464,22 @@ enum Phrase {
   AddMicrophoneButtonText,
   AddApplicationButtonText,
   NoAudioSourcesText,
+  FFXIVRecordDungeons,
+  FFXIVRecordTrials,
+  FFXIVRecordRaids,
+  FFXIVRecordAllianceRaids,
+  FFXIVSettingsLabel,
+  SettingsPageFFXIVHeader,
+  FFXIVLogPathDescription,
+  RecordFFXIVDescription,
+  FFXIV,
+  RecordFFXIVLabel,
+  FFXIVLogPathLabel,
+  InvalidFFXIVLogPathText,
+  FFXIVRecordDungeonsDescription,
+  FFXIVRecordTrialsDescription,
+  FFXIVRecordRaidsDescription,
+  FFXIVRecordAllianceRaidsDescription,
 }
 
 enum Language {

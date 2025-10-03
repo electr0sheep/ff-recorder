@@ -94,6 +94,12 @@ export type ConfigurationSchema = {
   manualRecordSoundAlert: boolean;
   manualRecordUpload: boolean;
   firstTimeSetup: boolean;
+  recordFFXIV: boolean;
+  FFXIVLogPath: string;
+  FFXIVRecordDungeons: boolean;
+  FFXIVRecordTrials: boolean;
+  FFXIVRecordRaids: boolean;
+  FFXIVRecordAllianceRaids: boolean;
 };
 
 export type ConfigurationSchemaKey = keyof ConfigurationSchema;
@@ -588,5 +594,35 @@ export const configSchema = {
     description: Phrase.FirstTimeSetupDescription,
     type: 'boolean',
     default: true,
+  },
+  recordFFXIV: {
+    description: Phrase.RecordFFXIVDescription,
+    type: 'boolean',
+    default: false,
+  },
+  FFXIVLogPath: {
+    description: Phrase.FFXIVLogPathDescription,
+    type: 'string',
+    default: '',
+  },
+  FFXIVRecordDungeons: {
+    description: Phrase.FFXIVRecordDungeonsDescription,
+    type: 'boolean',
+    default: false,
+  },
+  FFXIVRecordTrials: {
+    description: Phrase.FFXIVRecordTrialsDescription,
+    type: 'boolean',
+    default: false,
+  },
+  FFXIVRecordRaids: {
+    description: Phrase.FFXIVRecordRaidsDescription,
+    type: 'boolean',
+    default: false,
+  },
+  FFXIVRecordAllianceRaids: {
+    description: Phrase.FFXIVRecordAllianceRaidsDescription,
+    type: 'boolean',
+    default: false,
   },
 };

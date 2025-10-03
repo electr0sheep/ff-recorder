@@ -66,6 +66,11 @@ const Status = ({
       flavours.push(s);
     }
 
+    if (config.recordFFXIV) {
+      const s = getLocalePhrase(language, Phrase.FFXIV);
+      flavours.push(s);
+    }
+
     if (flavours.length > 0) {
       return `${flavours.join(', ')}.`;
     }
@@ -207,6 +212,15 @@ const Status = ({
                 {': '}
               </span>
               <code>{config.retailPtrLogPath}</code>
+            </li>
+          )}
+          {config.recordFFXIV && (
+            <li>
+              <span className="font-bold">
+                {getLocalePhrase(language, Phrase.FFXIV)}
+                {': '}
+              </span>
+              <code>{config.FFXIVLogPath}</code>
             </li>
           )}
         </ul>

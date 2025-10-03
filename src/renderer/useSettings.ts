@@ -112,6 +112,12 @@ export const getSettings = (): ConfigurationSchema => {
     manualRecordSoundAlert: getConfigValue<boolean>('manualRecordSoundAlert'),
     manualRecordUpload: getConfigValue<boolean>('manualRecordUpload'),
     firstTimeSetup: getConfigValue<boolean>('firstTimeSetup'),
+    recordFFXIV: getConfigValue<boolean>('recordFFXIV'),
+    FFXIVLogPath: getConfigValue<string>('FFXIVLogPath'),
+    FFXIVRecordDungeons: getConfigValue<boolean>('FFXIVRecordDungeons'),
+    FFXIVRecordTrials: getConfigValue<boolean>('FFXIVRecordTrials'),
+    FFXIVRecordRaids: getConfigValue<boolean>('FFXIVRecordRaids'),
+    FFXIVRecordAllianceRaids: getConfigValue<boolean>('FFXIVRecordAllianceRaids'),
     /* eslint-enable prettier/prettier */
   };
 

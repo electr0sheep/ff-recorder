@@ -11,7 +11,11 @@ import {
   Swords,
 } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faDungeon, faDragon, faSkull } from '@fortawesome/free-solid-svg-icons';
+import {
+  faDungeon,
+  faDragon,
+  faSkull,
+} from '@fortawesome/free-solid-svg-icons';
 import {
   AppState,
   ErrorReport,
@@ -238,13 +242,18 @@ const SideMenu = (props: IProps) => {
             {getLocalePhrase(appState.language, Phrase.FFXIVRecordingsHeading)}
           </Menu.Label>
           {renderCategoryTab(
+            VideoCategory.FFXIVDungeons,
+            <FontAwesomeIcon icon={faDungeon} size="xl" />,
+          )}
+          {renderCategoryTab(
             VideoCategory.FFXIVTrials,
             <FontAwesomeIcon icon={faSkull} size="xl" />,
           )}
           {renderCategoryTab(
-            VideoCategory.FFXIVDungeons,
-            <FontAwesomeIcon icon={faDungeon} size="xl" />,
+            VideoCategory.FFXIVRaids,
+            <FontAwesomeIcon icon={faDragon} size="xl" />,
           )}
+          {renderCategoryTab(VideoCategory.FFXIVAllianceRaids, <Goal />)}
         </Menu>
       </ScrollArea>
       <Separator className="mb-4" />
@@ -253,7 +262,11 @@ const SideMenu = (props: IProps) => {
         withScrollIndicators={false}
       >
         <Menu
-          initialValue={appState.page !== Pages.None ? appState.page : false}
+          initialValue={
+            ![Pages.None, Pages.WoW, Pages.FFXIV].includes(appState.page)
+              ? appState.page
+              : false
+          }
           onChange={handleChangePage}
         >
           <Menu.Label>

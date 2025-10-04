@@ -115,9 +115,13 @@ export const getSettings = (): ConfigurationSchema => {
     recordFFXIV: getConfigValue<boolean>('recordFFXIV'),
     FFXIVLogPath: getConfigValue<string>('FFXIVLogPath'),
     FFXIVRecordDungeons: getConfigValue<boolean>('FFXIVRecordDungeons'),
+    FFXIVCloudUploadDungeons: getConfigValue<boolean>('FFXIVCloudUploadDungeons'),
     FFXIVRecordTrials: getConfigValue<boolean>('FFXIVRecordTrials'),
+    FFXIVCloudUploadTrials: getConfigValue<boolean>('FFXIVCloudUploadTrials'),
     FFXIVRecordRaids: getConfigValue<boolean>('FFXIVRecordRaids'),
+    FFXIVCloudUploadRaids: getConfigValue<boolean>('FFXIVCloudUploadRaids'),
     FFXIVRecordAllianceRaids: getConfigValue<boolean>('FFXIVRecordAllianceRaids'),
+    FFXIVCloudUploadAllianceRaids: getConfigValue<boolean>('FFXIVCloudUploadAllianceRaids'),
     /* eslint-enable prettier/prettier */
   };
 

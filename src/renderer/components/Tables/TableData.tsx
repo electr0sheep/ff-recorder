@@ -436,11 +436,17 @@ const useTable = (
     case VideoCategory.Manual:
       columns = manualColumns;
       break;
+    case VideoCategory.FFXIVDungeons:
+      columns = dungeonColumns;
+      break;
     case VideoCategory.FFXIVTrials:
       columns = raidColumns;
       break;
-    case VideoCategory.FFXIVDungeons:
-      columns = dungeonColumns;
+    case VideoCategory.FFXIVRaids:
+      columns = raidColumns;
+      break;
+    case VideoCategory.FFXIVAllianceRaids:
+      columns = raidColumns;
       break;
     default:
       throw new Error('Unrecognized category');

@@ -9,8 +9,8 @@ export enum VideoCategory {
   Battlegrounds = 'Battlegrounds',
   Clips = 'Clips',
   Manual = 'Manual',
-  FFXIVTrials = 'Trials',
-  FFXIVRaids = 'Raids ',
-  FFXIVDungeons = 'Dungeons',
-  FFXIVAllianceRaids = 'Alliance Raids',
+  FFXIVTrials = 'FFXIVTrials',
+  FFXIVRaids = 'FFXIVRaids',
+  FFXIVDungeons = 'FFXIVDungeons',
+  FFXIVAllianceRaids = 'FFXIVAllianceRaids',
 }

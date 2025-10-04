@@ -39,10 +39,14 @@ const getLocaleCategoryLabel = (
       return getLocalePhrase(lang, Phrase.VideoCategoryManualLabel);
     case VideoCategory.Clips:
       return getLocalePhrase(lang, Phrase.VideoCategoryClipsLabel);
-    case VideoCategory.FFXIVTrials:
-      return getLocalePhrase(lang, Phrase.VideoCategoryFFXIVTrialsLabel);
     case VideoCategory.FFXIVDungeons:
       return getLocalePhrase(lang, Phrase.VideoCategoryFFXIVDungeonsLabel);
+    case VideoCategory.FFXIVTrials:
+      return getLocalePhrase(lang, Phrase.VideoCategoryFFXIVTrialsLabel);
+    case VideoCategory.FFXIVRaids:
+      return getLocalePhrase(lang, Phrase.VideoCategoryFFXIVRaidsLabel);
+    case VideoCategory.FFXIVAllianceRaids:
+      return getLocalePhrase(lang, Phrase.VideoCategoryFFXIVAllianceRaidsLabel);
     default:
       throw new Error('Unrecognized category');
   }

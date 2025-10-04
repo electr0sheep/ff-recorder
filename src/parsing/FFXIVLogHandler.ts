@@ -84,13 +84,26 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
   }
 
   private parseZone(zone: string): string[] {
+    console.debug('[FFXIVLogHandler] Raw Zone: ', zone);
     const parts = zone.split('(');
-    if (parts.length == 1) {
+    if (parts.length === 1) {
       return [parts[0], 'normal'];
+    }
+    // The Second Coil of Bahamut - Turn 1 Savage's name is the Second Coil of Bahaumt (Savage) - Turn (1)
+    if (parts.length === 3) {
+      if (parts[1].startsWith('Savage')) {
+        return [
+          `${parts[0].trim()}${parts[1].split(')')[1]}${parts[2].slice(0, -1)}`,
+          'savage',
+        ];
+      }
     }
     // Normal Containment Bay's name is Containment Bay (S1T7)
     if (parts[0] === 'Containment Bay ') {
       return [`Containment Bay ${parts[1].slice(0, -1)}`, 'normal'];
+      // The Binding Coil of Bahamut's name is the Binding Coil of Bahamut - Turn (1)
+    } else if (parts[0].includes('Coil of Bahamut')) {
+      return [`${parts[0]}${parts[1].slice(0, -1)}`, 'normal']
     }
     return [parts[0].trim(), parts[1].slice(0, -1)];
   }

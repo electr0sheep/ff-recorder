@@ -97,13 +97,21 @@ const categoryRecordingSettings: Omit<
     allowRecordKey: 'manualRecord',
     autoUploadKey: 'manualRecordUpload',
   },
+  [VideoCategory.FFXIVDungeons]: {
+    allowRecordKey: 'FFXIVRecordDungeons',
+    autoUploadKey: 'FFXIVCloudUploadDungeons',
+  },
   [VideoCategory.FFXIVTrials]: {
     allowRecordKey: 'FFXIVRecordTrials',
     autoUploadKey: 'FFXIVCloudUploadTrials',
   },
-  [VideoCategory.FFXIVDungeons]: {
-    allowRecordKey: 'FFXIVRecordDungeons',
-    autoUploadKey: 'FFXIVCloudUploadDungeons',
+  [VideoCategory.FFXIVRaids]: {
+    allowRecordKey: 'FFXIVRecordRaids',
+    autoUploadKey: 'FFXIVCloudUploadRaids',
+  },
+  [VideoCategory.FFXIVAllianceRaids]: {
+    allowRecordKey: 'FFXIVRecordAllianceRaids',
+    autoUploadKey: 'FFXIVCloudUploadAllianceRaids',
   },
 };
 

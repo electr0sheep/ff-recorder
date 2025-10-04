@@ -163,6 +163,10 @@ const WarcraftRecorder = () => {
       [VideoCategory.Battlegrounds]: 0,
       [VideoCategory.Manual]: 0,
       [VideoCategory.Clips]: 0,
+      [VideoCategory.FFXIVDungeons]: 0,
+      [VideoCategory.FFXIVTrials]: 0,
+      [VideoCategory.FFXIVRaids]: 0,
+      [VideoCategory.FFXIVAllianceRaids]: 0,
     };
 
     // Don't count the same video with different storage types twice. Still

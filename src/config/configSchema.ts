@@ -97,9 +97,13 @@ export type ConfigurationSchema = {
   recordFFXIV: boolean;
   FFXIVLogPath: string;
   FFXIVRecordDungeons: boolean;
+  FFXIVCloudUploadDungeons: boolean;
   FFXIVRecordTrials: boolean;
+  FFXIVCloudUploadTrials: boolean;
   FFXIVRecordRaids: boolean;
+  FFXIVCloudUploadRaids: boolean;
   FFXIVRecordAllianceRaids: boolean;
+  FFXIVCloudUploadAllianceRaids: boolean;
 };
 
 export type ConfigurationSchemaKey = keyof ConfigurationSchema;
@@ -610,19 +614,39 @@ export const configSchema = {
     type: 'boolean',
     default: false,
   },
+  FFXIVCloudUploadDungeons: {
+    description: Phrase.FFXIVCloudUploadDungeonsDescription,
+    type: 'boolean',
+    default: true,
+  },
   FFXIVRecordTrials: {
     description: Phrase.FFXIVRecordTrialsDescription,
     type: 'boolean',
     default: false,
+  },
+  FFXIVCloudUploadTrials: {
+    description: Phrase.FFXIVCloudUploadTrialsDescription,
+    type: 'boolean',
+    default: true,
   },
   FFXIVRecordRaids: {
     description: Phrase.FFXIVRecordRaidsDescription,
     type: 'boolean',
     default: false,
   },
+  FFXIVCloudUploadRaids: {
+    description: Phrase.FFXIVCloudUploadRaidsDescription,
+    type: 'boolean',
+    default: true,
+  },
   FFXIVRecordAllianceRaids: {
     description: Phrase.FFXIVRecordAllianceRaidsDescription,
     type: 'boolean',
     default: false,
+  },
+  FFXIVCloudUploadAllianceRaids: {
+    description: Phrase.FFXIVCloudUploadAllianceRaidsDescription,
+    type: 'boolean',
+    default: true,
   },
 };

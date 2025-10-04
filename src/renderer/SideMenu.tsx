@@ -11,7 +11,7 @@ import {
   Swords,
 } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faDungeon, faDragon } from '@fortawesome/free-solid-svg-icons';
+import { faDungeon, faDragon, faSkull } from '@fortawesome/free-solid-svg-icons';
 import {
   AppState,
   ErrorReport,
@@ -138,7 +138,7 @@ const SideMenu = (props: IProps) => {
     );
   };
 
-  const handleChangeCategory = (newCategory: VideoCategory) => {
+  const handleWoWChangeCategory = (newCategory: VideoCategory) => {
     const index = getCategoryIndex(newCategory);
     setConfigValue('selectedCategory', index);
     persistentProgress.current = 0;
@@ -147,7 +147,25 @@ const SideMenu = (props: IProps) => {
       return {
         ...prevState,
         videoFilterTags: [],
-        page: Pages.None,
+        page: Pages.WoW,
+        category: newCategory,
+        selectedVideos: [],
+        multiPlayerMode: false,
+        playing: false,
+      };
+    });
+  };
+
+  const handleFFXIVChangeCategory = (newCategory: VideoCategory) => {
+    const index = getCategoryIndex(newCategory);
+    setConfigValue('selectedCategory', index);
+    persistentProgress.current = 0;
+
+    setAppState((prevState) => {
+      return {
+        ...prevState,
+        videoFilterTags: [],
+        page: Pages.FFXIV,
         category: newCategory,
         selectedVideos: [],
         multiPlayerMode: false,
@@ -183,8 +201,8 @@ const SideMenu = (props: IProps) => {
         withScrollIndicators={false}
       >
         <Menu
-          initialValue={appState.page === Pages.None ? category : false}
-          onChange={handleChangeCategory}
+          initialValue={appState.page === Pages.WoW ? category : false}
+          onChange={handleWoWChangeCategory}
         >
           <Menu.Label>
             {getLocalePhrase(appState.language, Phrase.RecordingsHeading)}
@@ -206,7 +224,34 @@ const SideMenu = (props: IProps) => {
           {renderCategoryTab(VideoCategory.Manual, <HardHat />)}
           {renderCategoryTab(VideoCategory.Clips, <Clapperboard />)}
         </Menu>
-        <Separator className="my-5" />
+      </ScrollArea>
+      <Separator className="mb-4" />
+      <ScrollArea
+        className="w-full h-[calc(100%-80px)]"
+        withScrollIndicators={false}
+      >
+        <Menu
+          initialValue={appState.page === Pages.FFXIV ? category : false}
+          onChange={handleFFXIVChangeCategory}
+        >
+          <Menu.Label>
+            {getLocalePhrase(appState.language, Phrase.FFXIVRecordingsHeading)}
+          </Menu.Label>
+          {renderCategoryTab(
+            VideoCategory.FFXIVTrials,
+            <FontAwesomeIcon icon={faSkull} size="xl" />,
+          )}
+          {renderCategoryTab(
+            VideoCategory.FFXIVDungeons,
+            <FontAwesomeIcon icon={faDungeon} size="xl" />,
+          )}
+        </Menu>
+      </ScrollArea>
+      <Separator className="mb-4" />
+      <ScrollArea
+        className="w-full h-[calc(100%-500px)]"
+        withScrollIndicators={false}
+      >
         <Menu
           initialValue={appState.page !== Pages.None ? appState.page : false}
           onChange={handleChangePage}

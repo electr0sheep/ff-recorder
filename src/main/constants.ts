@@ -97,6 +97,14 @@ const categoryRecordingSettings: Omit<
     allowRecordKey: 'manualRecord',
     autoUploadKey: 'manualRecordUpload',
   },
+  [VideoCategory.FFXIVTrials]: {
+    allowRecordKey: 'FFXIVRecordTrials',
+    autoUploadKey: 'FFXIVCloudUploadTrials',
+  },
+  [VideoCategory.FFXIVDungeons]: {
+    allowRecordKey: 'FFXIVRecordDungeons',
+    autoUploadKey: 'FFXIVCloudUploadDungeons',
+  },
 };
 
 /**

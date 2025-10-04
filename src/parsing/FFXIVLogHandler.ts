@@ -33,46 +33,42 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
 
   private async handleZoneChange(line: FFXIVLogLine) {
     const [zone, _difficulty] = this.parseZone(line.arg(3));
+    console.debug('[FFXIVLogHandler] Zone: ', zone);
     if (
       trials.includes(zone) &&
       ConfigService.getInstance().get<boolean>('FFXIVRecordTrials')
     ) {
-      this.startRecording(line);
+      this.startRecording(line, VideoCategory.FFXIVTrials);
     } else if (
       raids.includes(zone) &&
       ConfigService.getInstance().get<boolean>('FFXIVRecordRaids')
     ) {
-      this.startRecording(line);
+      this.startRecording(line, VideoCategory.FFXIVRaids);
     } else if (
       dungeons.includes(zone) &&
       ConfigService.getInstance().get<boolean>('FFXIVRecordDungeons')
     ) {
-      this.startRecording(line);
+      this.startRecording(line, VideoCategory.FFXIVDungeons);
     } else if (
       ars.includes(zone) &&
       ConfigService.getInstance().get<boolean>('FFXIVRecordAllianceRaids')
     ) {
-      this.startRecording(line);
+      this.startRecording(line, VideoCategory.FFXIVAllianceRaids);
     } else if (ultimateRaids.includes(zone)) {
-      this.startRecording(line);
+      this.startRecording(line, VideoCategory.FFXIVAllianceRaids);
     } else if (chaoticArs.includes(zone)) {
-      this.startRecording(line);
+      this.startRecording(line, VideoCategory.FFXIVAllianceRaids);
     } else if (variantDungeons.includes(zone)) {
-      this.startRecording(line);
+      this.startRecording(line, VideoCategory.FFXIVAllianceRaids);
     } else if (criterionDungeons.includes(zone)) {
-      this.startRecording(line);
+      this.startRecording(line, VideoCategory.FFXIVAllianceRaids);
     } else {
       this.endRecording(line);
     }
   }
 
-  private async startRecording(line: FFXIVLogLine) {
-    const activity = new Battleground(
-      line.date(),
-      VideoCategory.Battlegrounds,
-      5,
-      Flavour.Retail,
-    );
+  private async startRecording(line: FFXIVLogLine, category: VideoCategory) {
+    const activity = new Battleground(line.date(), category, 5, Flavour.Retail);
 
     activity.playerGUID = '12345';
     activity.addCombatant(new Combatant('12345'));
@@ -91,6 +87,10 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     const parts = zone.split('(');
     if (parts.length == 1) {
       return [parts[0], 'normal'];
+    }
+    // Normal Containment Bay's name is Containment Bay (S1T7)
+    if (parts[0] === 'Containment Bay ') {
+      return [`Containment Bay ${parts[1].slice(0, -1)}`, 'normal'];
     }
     return [parts[0].trim(), parts[1].slice(0, -1)];
   }

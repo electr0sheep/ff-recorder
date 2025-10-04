@@ -303,6 +303,8 @@ type AudioSource = {
  */
 enum Pages {
   'None',
+  'WoW',
+  'FFXIV',
   'SceneEditor',
   'Settings',
 }

@@ -85,7 +85,7 @@ const ENGLISH: Translations = {
   [Phrase.CloudUploadRaidMinDifficultyDescription]: 'The minimum raid encounter difficulty for automatic cloud uploading.',
   [Phrase.CloudUploadDungeonMinLevelDescription]: 'The minimum keystone level for automatic cloud uploading.',
   [Phrase.LanguageDescription]: 'The language to use in the application.',
-  [Phrase.RecordingsHeading]: 'Recordings',
+  [Phrase.RecordingsHeading]: 'WoW Recordings',
   [Phrase.SettingsHeading]: 'Settings',
   [Phrase.GeneralButtonText]: 'General',
   [Phrase.SceneButtonText]: 'Scene',
@@ -483,6 +483,11 @@ const ENGLISH: Translations = {
   [Phrase.FFXIVRecordTrialsDescription]: 'Whether the application should record Trials',
   [Phrase.FFXIVRecordRaidsDescription]: 'Whether the application should record Raids',
   [Phrase.FFXIVRecordAllianceRaidsDescription]: 'Whether the application should record Alliance Raids',
+  [Phrase.FFXIVRecordingsHeading]: 'FFXIV Recordings',
+  [Phrase.VideoCategoryFFXIVTrialsLabel]: 'Trials',
+  [Phrase.FFXIVCloudUploadTrialsDescription]: 'If trial recordings should be uploaded to the cloud.',
+  [Phrase.VideoCategoryFFXIVDungeonsLabel]: 'Dungeons',
+  [Phrase.FFXIVCloudUploadDungeonsDescription]: 'If dungeon recordings should be uploaded to the cloud.',
 };
 
 export default ENGLISH;

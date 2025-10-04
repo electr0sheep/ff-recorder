@@ -76,7 +76,7 @@ const Layout = (props: IProps) => {
     <>
       {page === Pages.Settings && renderSettingsPage()}
       {page === Pages.SceneEditor && renderSceneEditor()}
-      {page === Pages.None && renderCategoryPage()}
+      {[Pages.None, Pages.WoW, Pages.FFXIV].includes(page) && renderCategoryPage()}
     </>
   );
 };

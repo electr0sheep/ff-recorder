@@ -480,6 +480,15 @@ enum Phrase {
   FFXIVRecordTrialsDescription,
   FFXIVRecordRaidsDescription,
   FFXIVRecordAllianceRaidsDescription,
+  FFXIVRecordingsHeading,
+  VideoCategoryFFXIVDungeonsLabel,
+  FFXIVCloudUploadDungeonsDescription,
+  VideoCategoryFFXIVTrialsLabel,
+  FFXIVCloudUploadTrialsDescription,
+  VideoCategoryFFXIVRaidsLabel,
+  FFXIVCloudUploadRaidsDescription,
+  VideoCategoryFFXIVAllianceRaidsLabel,
+  FFXIVCloudUploadAllianceRaidsDescription,
 }
 
 enum Language {

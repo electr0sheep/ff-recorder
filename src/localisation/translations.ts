@@ -39,6 +39,10 @@ const getLocaleCategoryLabel = (
       return getLocalePhrase(lang, Phrase.VideoCategoryManualLabel);
     case VideoCategory.Clips:
       return getLocalePhrase(lang, Phrase.VideoCategoryClipsLabel);
+    case VideoCategory.FFXIVTrials:
+      return getLocalePhrase(lang, Phrase.VideoCategoryFFXIVTrialsLabel);
+    case VideoCategory.FFXIVDungeons:
+      return getLocalePhrase(lang, Phrase.VideoCategoryFFXIVDungeonsLabel);
     default:
       throw new Error('Unrecognized category');
   }

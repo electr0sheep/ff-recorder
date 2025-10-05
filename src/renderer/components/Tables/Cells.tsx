@@ -15,9 +15,11 @@ import {
   isRaidUtil,
   isMythicPlusUtil,
   getDungeonName,
+  getPlayerJob,
+  getFFXIVJobColor,
 } from 'renderer/rendererutils';
 import { Box, Checkbox } from '@mui/material';
-import { affixImages, specImages } from 'renderer/images';
+import { affixImages, jobImages, specImages } from 'renderer/images';
 import { Language, Phrase } from 'localisation/phrases';
 import { Button } from '../Button/Button';
 import { Tooltip } from '../Tooltip/Tooltip';
@@ -274,56 +276,104 @@ export const populateViewpointCell = (
   const first = povs[0];
   const { player } = first;
 
-  if (!player || !player._specID) {
+  if (!player || (!player._specID && !player._job)) {
     // We don't have enough to render a spec icon and name so
     // just return the viewpoint count.
     return <div>{count}</div>;
   }
 
-  const playerName = getPlayerName(first);
-  const playerClass = getPlayerClass(first);
-  const playerClassColor = getWoWClassColor(playerClass);
-  const playerSpecID = getPlayerSpecID(first);
-  const specIcon = specImages[playerSpecID as keyof typeof specImages];
+  if (player._specID) {
+    const playerName = getPlayerName(first);
+    const playerClass = getPlayerClass(first);
+    const playerClassColor = getWoWClassColor(playerClass);
+    const playerSpecID = getPlayerSpecID(first);
+    const specIcon = specImages[playerSpecID as keyof typeof specImages];
 
-  const renderSpecAndName = () => {
+    const renderSpecAndName = () => {
+      return (
+        <>
+          <Box
+            key={player._GUID}
+            component="img"
+            src={specIcon}
+            sx={{
+              display: 'flex',
+              height: '25px',
+              width: '25px',
+              border: '1px solid black',
+              borderRadius: '15%',
+              boxSizing: 'border-box',
+              objectFit: 'cover',
+            }}
+          />
+          <div
+            className="font-sans font-semibold text-md text-shadow-instance mx-1"
+            style={{ color: playerClassColor }}
+          >
+            {playerName}
+          </div>
+        </>
+      );
+    };
+
+    const renderRemainingCount = () => {
+      if (count > 1) return <div>{`+${count - 1}`}</div>;
+      return <></>;
+    };
+
     return (
-      <>
-        <Box
-          key={player._GUID}
-          component="img"
-          src={specIcon}
-          sx={{
-            display: 'flex',
-            height: '25px',
-            width: '25px',
-            border: '1px solid black',
-            borderRadius: '15%',
-            boxSizing: 'border-box',
-            objectFit: 'cover',
-          }}
-        />
-        <div
-          className="font-sans font-semibold text-md text-shadow-instance mx-1"
-          style={{ color: playerClassColor }}
-        >
-          {playerName}
-        </div>
-      </>
+      <div className="flex truncate">
+        {renderSpecAndName()}
+        {renderRemainingCount()}
+      </div>
     );
-  };
+  } else if (player._job) {
+    const playerName = getPlayerName(first);
+    const playerJob = getPlayerJob(first);
+    const playerJobColor = getFFXIVJobColor(playerJob);
+    const jobIcon = jobImages[playerJob.toString() as keyof typeof jobImages];
 
-  const renderRemainingCount = () => {
-    if (count > 1) return <div>{`+${count - 1}`}</div>;
-    return <></>;
-  };
+    const renderJobAndName = () => {
+      return (
+        <>
+          <Box
+            key={player._GUID}
+            component="img"
+            src={jobIcon}
+            sx={{
+              display: 'flex',
+              height: '25px',
+              width: '25px',
+              border: '1px solid black',
+              borderRadius: '15%',
+              boxSizing: 'border-box',
+              objectFit: 'cover',
+            }}
+          />
+          <div
+            className="font-sans font-semibold text-md text-shadow-instance mx-1"
+            style={{ color: playerJobColor }}
+          >
+            {playerName}
+          </div>
+        </>
+      );
+    };
 
-  return (
-    <div className="flex truncate">
-      {renderSpecAndName()}
-      {renderRemainingCount()}
-    </div>
-  );
+    const renderRemainingCount = () => {
+      if (count > 1) return <div>{`+${count - 1}`}</div>;
+      return <></>;
+    };
+
+    return (
+      <div className="flex truncate">
+        {renderJobAndName()}
+        {renderRemainingCount()}
+      </div>
+    );
+  } else {
+    return <div>{count}</div>;
+  }
 };
 
 export const populateSelectCell = (

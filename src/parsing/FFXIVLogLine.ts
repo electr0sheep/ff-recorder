@@ -46,7 +46,7 @@ export default class FFXIVLogLine {
     // this.parseLogArg(1);
   }
 
-  arg(index: number): any {
+  arg(index: number): string {
     if (!this._args || index >= this._argsListLen) {
       const maxsplit = Math.max(index + 1, this._argsListLen);
       this.parseLogArg(maxsplit);

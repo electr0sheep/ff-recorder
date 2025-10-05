@@ -48,6 +48,7 @@ import {
 import { ConfigurationSchema } from 'config/configSchema';
 import { getLocalePhrase, Language } from 'localisation/translations';
 import { Phrase } from 'localisation/phrases';
+import { Job } from 'main/FFXIVTypes';
 
 const getVideoResult = (video: RendererVideo): boolean => {
   return video.result;
@@ -283,6 +284,43 @@ const getEncounterMarkers = (video: RendererVideo) => {
 
 const getWoWClassColor = (unitClass: WoWCharacterClassType) => {
   return WoWClassColor[unitClass];
+};
+
+const getFFXIVJobColor = (job: Job) => {
+  switch (job) {
+    case Job.ACN:
+    case Job.ARC:
+    case Job.BLM:
+    case Job.BLU:
+    case Job.BRD:
+    case Job.DNC:
+    case Job.DRG:
+    case Job.LNC:
+    case Job.MCH:
+    case Job.MNK:
+    case Job.NIN:
+    case Job.PGL:
+    case Job.RDM:
+    case Job.ROG:
+    case Job.RPR:
+    case Job.SAM:
+    case Job.SMN:
+    case Job.THM:
+      return '#733434';
+    case Job.AST:
+    case Job.CNJ:
+    case Job.SCH:
+    case Job.SGE:
+    case Job.WHM:
+      return '#42672d';
+    case Job.DRK:
+    case Job.GLA:
+    case Job.GNB:
+    case Job.MRD:
+    case Job.PLD:
+    case Job.WAR:
+      return '#4555bb';
+  }
 };
 
 const getInstanceDifficultyText = (video: RendererVideo, lang: Language) => {
@@ -540,6 +578,16 @@ const getPlayerClass = (video: RendererVideo): WoWCharacterClassType => {
   }
 
   return getSpecClass(player._specID);
+};
+
+const getPlayerJob = (video: RendererVideo): Job => {
+  const { player } = video;
+
+  if (player === undefined || player._job === undefined) {
+    return Job.None;
+  }
+
+  return player._job;
 };
 
 const getVideoTime = (video: RendererVideo) => {
@@ -1119,6 +1167,7 @@ export {
   getFormattedDuration,
   getVideoResult,
   getWoWClassColor,
+  getFFXIVJobColor,
   getVideoResultText,
   getInstanceDifficultyText,
   getEncounterNameById,
@@ -1172,6 +1221,7 @@ export {
   videoToDate,
   dateToHumanReadable,
   getSpecClass,
+  getPlayerJob,
   raidResultToPercent,
   getVideoStorageFilter,
   getAudioSourceChoices,

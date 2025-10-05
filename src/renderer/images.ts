@@ -45,6 +45,38 @@ import spec66 from '../../assets/specs/66.png';
 import spec71 from '../../assets/specs/71.png';
 import spec73 from '../../assets/specs/73.png';
 
+import acn from '../../assets/jobs/acn.png';
+import arc from '../../assets/jobs/arc.png';
+import ast from '../../assets/jobs/ast.png';
+import blm from '../../assets/jobs/blm.png';
+import blu from '../../assets/jobs/blu.png';
+import brd from '../../assets/jobs/brd.png';
+import cnj from '../../assets/jobs/cnj.png';
+import dnc from '../../assets/jobs/dnc.png';
+import drg from '../../assets/jobs/drg.png';
+import drk from '../../assets/jobs/drk.png';
+import gla from '../../assets/jobs/gla.png';
+import gnb from '../../assets/jobs/gnb.png';
+import lnc from '../../assets/jobs/lnc.png';
+import mch from '../../assets/jobs/mch.png';
+import mnk from '../../assets/jobs/mnk.png';
+import mrd from '../../assets/jobs/mrd.png';
+import nin from '../../assets/jobs/nin.png';
+import pct from '../../assets/jobs/pct.png';
+import pgl from '../../assets/jobs/pgl.png';
+import pld from '../../assets/jobs/pld.png';
+import rdm from '../../assets/jobs/rdm.png';
+import rog from '../../assets/jobs/rog.png';
+import rpr from '../../assets/jobs/rpr.png';
+import sam from '../../assets/jobs/sam.png';
+import sch from '../../assets/jobs/sch.png';
+import sge from '../../assets/jobs/sge.png';
+import smn from '../../assets/jobs/smn.png';
+import thm from '../../assets/jobs/thm.png';
+import vpr from '../../assets/jobs/vpr.png';
+import war from '../../assets/jobs/war.png';
+import whm from '../../assets/jobs/whm.png';
+
 import affix1 from '../../assets/affixes/1.jpg';
 import affix11 from '../../assets/affixes/11.jpg';
 import affix12 from '../../assets/affixes/12.jpg';
@@ -98,6 +130,40 @@ import warlock from '../../assets/class/warlock.png';
 import warrior from '../../assets/class/warrior.png';
 import evoker from '../../assets/class/evoker.png';
 import demonhunter from '../../assets/class/demonhunter.png';
+
+const jobImages = {
+  ACN: acn,
+  ARC: arc,
+  AST: ast,
+  BLM: blm,
+  BLU: blu,
+  BRD: brd,
+  CNJ: cnj,
+  DNC: dnc,
+  DRG: drg,
+  DRK: drk,
+  GLA: gla,
+  GNB: gnb,
+  LNC: lnc,
+  MCH: mch,
+  MNK: mnk,
+  MRD: mrd,
+  NIN: nin,
+  PCT: pct,
+  PGL: pgl,
+  PLD: pld,
+  RDM: rdm,
+  ROG: rog,
+  RPR: rpr,
+  SAM: sam,
+  SCH: sch,
+  SGE: sge,
+  SMN: smn,
+  THM: thm,
+  VPR: vpr,
+  WAR: war,
+  WHM: whm,
+};
 
 const specImages = {
   0: spec0,
@@ -207,4 +273,4 @@ const classImages: Record<WoWCharacterClassType, string> = {
   UNKNOWN: spec0,
 };
 
-export { roleImages, specImages, affixImages, classImages };
+export { roleImages, jobImages, specImages, affixImages, classImages };

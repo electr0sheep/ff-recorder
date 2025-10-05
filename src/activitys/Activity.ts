@@ -18,7 +18,7 @@ export default abstract class Activity {
 
   protected _deaths: PlayerDeathType[];
 
-  protected _flavour: Flavour;
+  protected _flavour: Flavour | undefined;
 
   protected _endDate?: Date;
 
@@ -32,7 +32,7 @@ export default abstract class Activity {
 
   protected cfg = ConfigService.getInstance();
 
-  constructor(startDate: Date, category: VideoCategory, flavour: Flavour) {
+  constructor(startDate: Date, category: VideoCategory, flavour?: Flavour) {
     this._result = false;
     this._combatantMap = new Map();
     this._startDate = startDate;
@@ -171,9 +171,17 @@ export default abstract class Activity {
    * it might vary slightly with local system clock.
    */
   getUniqueHash(): string {
-    const deterministicFields = [this.category, this.flavour, this.result].map(
-      (f) => f.toString(),
-    );
+    let deterministicFields = [];
+
+    if (this.flavour) {
+      deterministicFields = [this.category, this.flavour, this.result].map(
+        (f) => f.toString(),
+      );
+    } else {
+      deterministicFields = [this.category, this.result].map((f) =>
+        f.toString(),
+      );
+    }
 
     const sortedNames: string[] = [];
 

@@ -1,6 +1,6 @@
 const ultimateRaids = [
   'the Unending Coil of Bahamut (Ultimate)',
-  "The Weapon's Refrain (Ultimate)",
+  "the Weapon's Refrain (Ultimate)",
   'the Epic of Alexander (Ultimate)',
   "Dragonsong's Reprise (Ultimate)",
   'the Omega Protocol (Ultimate)',
@@ -23,7 +23,7 @@ const criterionDungeons = [
 ];
 
 const variantDungeons = [
-  "The Sil'dihn Subterrane",
+  "the Sil'dihn Subterrane",
   'Mount Rokkon',
   'Aloalo Island',
 ];
@@ -45,7 +45,7 @@ const arrDungeons = [
   'the Aurum Vale',
   'Castrum Meridianum',
   'the Praetorium',
-  "The Wanderer's Palace",
+  "the Wanderer's Palace",
   'Amdapor Keep',
   'Pharos Sirius',
   'the Lost City of Amdapor',
@@ -81,7 +81,7 @@ const sbDungeons = [
   'the Temple of the Fist',
   'the Drowned City of Skalla',
   "Hells' Lid",
-  "The Swallow's Compass",
+  "the Swallow's Compass",
   'the Burn',
   'the Ghimlyt Dark',
 ];
@@ -97,7 +97,7 @@ const shbDungeons = [
   'Akadaemia Anyder',
   'the Grand Cosmos',
   'Anamnesis Anyder',
-  "The Heroes' Gauntlet",
+  "the Heroes' Gauntlet",
   "Matoya's Relict",
   "Paglth'an",
 ];
@@ -159,18 +159,18 @@ const arrRaids = [
 ];
 
 const hwRaids = [
-  'Alexander - The Fist of the Father',
-  'Alexander - The Cuff of the Father',
-  'Alexander - The Arm of the Father',
-  'Alexander - The Burden of the Father',
-  'Alexander - The Fist of the Son',
-  'Alexander - The Cuff of the Son',
-  'Alexander - The Arm of the Son',
-  'Alexander - The Burden of the Son',
-  'Alexander - The Eyes of the Creator',
-  'Alexander - The Breath of the Creator',
-  'Alexander - The Heart of the Creator',
-  'Alexander - The Soul of the Creator',
+  'Alexander - the Fist of the Father',
+  'Alexander - the Cuff of the Father',
+  'Alexander - the Arm of the Father',
+  'Alexander - the Burden of the Father',
+  'Alexander - the Fist of the Son',
+  'Alexander - the Cuff of the Son',
+  'Alexander - the Arm of the Son',
+  'Alexander - the Burden of the Son',
+  'Alexander - the Eyes of the Creator',
+  'Alexander - the Breath of the Creator',
+  'Alexander - the Heart of the Creator',
+  'Alexander - the Soul of the Creator',
 ];
 
 const sbRaids = [
@@ -204,18 +204,18 @@ const shbRaids = [
 ];
 
 const ewRaids = [
-  'Asphodelos: The First Circle',
-  'Asphodelos: The Second Circle',
-  'Asphodelos: The Third Circle',
-  'Asphodelos: The Fourth Circle',
-  'Abyssos: The Fifth Circle',
-  'Abyssos: The Sixth Circle',
-  'Abyssos: The Seventh Circle',
-  'Abyssos: The Eighth Circle',
-  'Anabaseios: The Ninth Circle',
-  'Anabaseios: The Tenth Circle',
-  'Anabaseios: The Eleventh Circle',
-  'Anabaseios: The Twelfth Circle',
+  'Asphodelos: the First Circle',
+  'Asphodelos: the Second Circle',
+  'Asphodelos: the Third Circle',
+  'Asphodelos: the Fourth Circle',
+  'Abyssos: the Fifth Circle',
+  'Abyssos: the Sixth Circle',
+  'Abyssos: the Seventh Circle',
+  'Abyssos: the Eighth Circle',
+  'Anabaseios: the Ninth Circle',
+  'Anabaseios: the Tenth Circle',
+  'Anabaseios: the Eleventh Circle',
+  'Anabaseios: the Twelfth Circle',
 ];
 
 const dtRaids = [
@@ -249,13 +249,13 @@ const sbArs = [
 
 const shbArs = [
   'the Copied Factory',
-  "The Puppets' Bunker",
-  "The Tower at Paradigm's Breach",
+  "the Puppets' Bunker",
+  "the Tower at Paradigm's Breach",
 ];
 
 const ewArs = ['Aglaia', 'Euphrosyne', 'Thaleia'];
 
-const dtArs = ['Jeuno: The First Walk', "San d'Oria: The Second Walk"];
+const dtArs = ['Jeuno: the First Walk', "San d'Oria: the Second Walk"];
 
 const ars = arrArs.concat(hwArs, sbArs, shbArs, ewArs, dtArs);
 
@@ -267,17 +267,17 @@ const arrTrials = [
   'the Howling Eye',
   'the Porta Decumana',
   'Thornmarch',
-  'A Relic Reborn: The Chimera',
-  'A Relic Reborn: The Hydra',
+  'A Relic Reborn: the Chimera',
+  'A Relic Reborn: the Hydra',
   'the Whorleater',
   'Battle on the Big Bridge',
   'the Striking Tree',
   'the Akh Afah Ampitheatre',
-  "The Dragon's Neck",
+  "the Dragon's Neck",
   'the Chrysalis',
   'Battle in the Big Keep',
   "Urth's Fount",
-  "The Minstrel's Ballad: Ultima's Bane",
+  "the Minstrel's Ballad: Ultima's Bane",
 ];
 
 const hwTrials = [
@@ -288,8 +288,8 @@ const hwTrials = [
   'the Final Steps of Faith',
   'Containment Bay P1T6',
   'Containment Bay Z1T9',
-  "The Minstrel's Ballad: Thordan's Reign",
-  "The Minstrel's Ballad: Nidhogg's Rage",
+  "the Minstrel's Ballad: Thordan's Reign",
+  "the Minstrel's Ballad: Nidhogg's Rage",
 ];
 
 const sbTrials = [
@@ -302,8 +302,8 @@ const sbTrials = [
   "Hells' Kier",
   'the Wreath of Snakes',
   'Kugane Ohashi',
-  "The Minstrel's Ballad: Shinryu's Domain",
-  "The Minstrel's Ballad: Tsukuyomi's Pain",
+  "the Minstrel's Ballad: Shinryu's Domain",
+  "the Minstrel's Ballad: Tsukuyomi's Pain",
 ];
 
 const shbTrials = [
@@ -314,7 +314,7 @@ const shbTrials = [
   'the Seat of Sacrifice',
   'Castrum Marinum',
   'the Cloud Deck',
-  "The Minstrel's Ballad: Hades's Elegy",
+  "the Minstrel's Ballad: Hades's Elegy",
 ];
 
 const ewTrials = [
@@ -326,9 +326,9 @@ const ewTrials = [
   'the Voidcast Dais',
   'the Abyssal Fracture',
   'the Gilded Araya',
-  "The Minstrel's Ballad: Zodiark's Fall",
-  "The Minstrel's Ballad: Hydaelyn's Call",
-  "The Minstrel's Ballad: Endsinger's Aria",
+  "the Minstrel's Ballad: Zodiark's Fall",
+  "the Minstrel's Ballad: Hydaelyn's Call",
+  "the Minstrel's Ballad: Endsinger's Aria",
 ];
 
 const dtTrials = [
@@ -337,8 +337,8 @@ const dtTrials = [
   'the Interphos',
   'Recollection',
   'the Ageless Necropolis',
-  "The Minstrel's Ballad: Sphene's Burden",
-  "The Minstrel's Ballad: Necron's Embrace",
+  "the Minstrel's Ballad: Sphene's Burden",
+  "the Minstrel's Ballad: Necron's Embrace",
 ];
 
 const trials = arrTrials.concat(

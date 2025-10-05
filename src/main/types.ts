@@ -4,6 +4,7 @@ import { RawChallengeModeTimelineSegment } from './keystone';
 import { VideoCategory } from '../types/VideoCategory';
 import { Tag } from 'react-tag-autocomplete';
 import { DateValueType } from 'react-tailwindcss-datepicker';
+import { Job } from './FFXIVTypes';
 
 /**
  * Application recording status.
@@ -180,7 +181,7 @@ type Metadata = {
   start?: number; // epoch start time of activity
   clippedAt?: number; // epoch time of clipping
   result: boolean;
-  flavour: Flavour;
+  flavour?: Flavour;
   zoneID?: number;
   zoneName?: string;
   encounterID?: number;
@@ -237,6 +238,7 @@ type RawCombatant = {
   _GUID?: string;
   _teamID?: number;
   _specID?: number;
+  _job?: string;
   _name?: string;
   _realm?: string;
   _region?: string;
@@ -619,11 +621,6 @@ enum SoundAlerts {
   MANUAL_RECORDING_STOP = 'manual-recording-stop',
 }
 
-enum FFXIVLogTypes {
-  CHAT = '00',
-  ZONE_CHANGE = '265',
-}
-
 export {
   RecStatus,
   SaveStatus,
@@ -684,5 +681,4 @@ export {
   BoxDimensions,
   WowProcessEvent,
   SoundAlerts,
-  FFXIVLogTypes,
 };

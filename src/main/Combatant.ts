@@ -1,3 +1,4 @@
+import { Job } from './FFXIVTypes';
 import { RawCombatant } from './types';
 
 /**
@@ -9,6 +10,8 @@ export default class Combatant {
   private _teamID?: number;
 
   private _specID?: number;
+
+  private _job?: Job;
 
   private _name?: string;
 
@@ -61,6 +64,14 @@ export default class Combatant {
    */
   set teamID(value) {
     this._teamID = value;
+  }
+
+  get job() {
+    return this._job;
+  }
+
+  set job(value) {
+    this._job = value;
   }
 
   /**
@@ -128,10 +139,11 @@ export default class Combatant {
     const hasName = this.name !== undefined;
     const hasRealm = this.realm !== undefined;
     const hasSpecID = this.specID !== undefined;
+    const hasJob = this.job !== undefined;
     const hasTeamID = this.teamID !== undefined;
 
     // We do not check region here, because it may not exists in Classic / Era clients.
-    return hasGUID && hasName && hasRealm && hasSpecID && hasTeamID;
+    return hasGUID && hasName && hasRealm && (hasSpecID || hasJob) && hasTeamID;
   }
 
   getRaw(): RawCombatant {
@@ -139,6 +151,10 @@ export default class Combatant {
 
     if (this.teamID !== undefined) rawCombatant._teamID = this.teamID;
     if (this.specID !== undefined) rawCombatant._specID = this.specID;
+    if (this.job !== undefined)
+      rawCombatant._job = Object.entries(Job).find(
+        ([_, v]) => v === this.job,
+      )?.[0];
     if (this.name !== undefined) rawCombatant._name = this.name;
     if (this.realm !== undefined) rawCombatant._realm = this.realm;
     if (this.region !== undefined) rawCombatant._region = this.region;

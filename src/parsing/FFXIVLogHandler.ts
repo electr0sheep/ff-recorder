@@ -16,6 +16,8 @@ import ConfigService from 'config/ConfigService';
 import FFXIVTrial from 'activitys/FFXIVTrial';
 import Activity from 'activitys/Activity';
 import { LogType, Job } from 'main/FFXIVTypes';
+import FFXIVRaid from 'activitys/FFXIVRaid';
+import FFXIVDungeon from 'activitys/FFXIVDungeon';
 
 /**
  * FFXIVLogHandler class.
@@ -35,6 +37,9 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     });
     this.combatLogWatcher.on(LogType.PLAYER, async (line: FFXIVLogLine) => {
       await this.handlePlayer(line);
+    });
+    this.combatLogWatcher.on(LogType.CHAT, async (line: FFXIVLogLine) => {
+      await this.handleChat(line);
     });
   }
 
@@ -75,12 +80,14 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       raids.includes(zone) &&
       ConfigService.getInstance().get<boolean>('FFXIVRecordRaids')
     ) {
-      this.startRecording(line, VideoCategory.FFXIVRaids);
+      const activity = new FFXIVRaid(line.date(), zone, difficulty);
+      this.startRecording(activity);
     } else if (
       dungeons.includes(zone) &&
       ConfigService.getInstance().get<boolean>('FFXIVRecordDungeons')
     ) {
-      this.startRecording(line, VideoCategory.FFXIVDungeons);
+      const activity = new FFXIVDungeon(line.date(), zone, difficulty);
+      this.startRecording(activity);
     } else if (
       ars.includes(zone) &&
       ConfigService.getInstance().get<boolean>('FFXIVRecordAllianceRaids')
@@ -95,7 +102,7 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     } else if (criterionDungeons.includes(zone)) {
       this.startRecording(line, VideoCategory.FFXIVAllianceRaids);
     } else {
-      this.endRecording(line);
+      this.endRecording(line, false);
     }
   }
 
@@ -111,7 +118,6 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
         const combatant = new Combatant(guid);
         combatant.name = name;
         combatant.job = job;
-        // combatant.job = Job.ACN;
         FFXIVGenericLogHandler.activity.addCombatant(combatant);
       }
     }
@@ -129,6 +135,16 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     }
   }
 
+  private async handleChat(line: FFXIVLogLine) {
+    const activity = FFXIVGenericLogHandler.activity;
+    console.debug('[FFXIVLogHandler]', line.arg(2), line.arg(4));
+    if (activity) {
+      if (line.arg(2) === '0840' && line.arg(4).includes('completion time')) {
+        this.endRecording(line, true);
+      }
+    }
+  }
+
   private async startRecording(
     // line: FFXIVLogLine,
     // category: VideoCategory,
@@ -142,9 +158,9 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     await FFXIVGenericLogHandler.startActivity(activity);
   }
 
-  private async endRecording(line: FFXIVLogLine) {
+  private async endRecording(line: FFXIVLogLine, success: boolean) {
     if (FFXIVGenericLogHandler.activity) {
-      FFXIVGenericLogHandler.activity.end(line.date(), false);
+      FFXIVGenericLogHandler.activity.end(line.date(), success);
       await FFXIVGenericLogHandler.endActivity();
     }
   }
@@ -166,7 +182,7 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     console.debug('[FFXIVLogHandler] Raw Zone: ', zone);
     const parts = zone.split('(');
     if (parts.length === 1) {
-      return [parts[0], 'normal'];
+      return [parts[0], 'Normal'];
     }
     // The Second Coil of Bahamut - Turn 1 Savage's name is the Second Coil of Bahaumt (Savage) - Turn (1)
     if (parts.length === 3) {
@@ -179,10 +195,10 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     }
     // Normal Containment Bay's name is Containment Bay (S1T7)
     if (parts[0] === 'Containment Bay ') {
-      return [`Containment Bay ${parts[1].slice(0, -1)}`, 'normal'];
+      return [`Containment Bay ${parts[1].slice(0, -1)}`, 'Normal'];
       // The Binding Coil of Bahamut's name is the Binding Coil of Bahamut - Turn (1)
     } else if (parts[0].includes('Coil of Bahamut')) {
-      return [`${parts[0]}${parts[1].slice(0, -1)}`, 'normal'];
+      return [`${parts[0]}${parts[1].slice(0, -1)}`, 'Normal'];
     }
     return [parts[0].trim(), parts[1].slice(0, -1)];
   }

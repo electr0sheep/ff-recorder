@@ -13,6 +13,7 @@ import {
   getInstanceDifficultyText,
   videoToDate,
   getDungeonName,
+  getFFXIVDungeonName,
 } from 'renderer/rendererutils';
 import { VideoCategory } from 'types/VideoCategory';
 import {
@@ -26,6 +27,7 @@ import {
   populateLevelCell,
   populateActivityCell,
   populateAffixesCell,
+  populateFFXIVLevelCell,
 } from './Cells';
 import {
   EncounterHeader,
@@ -411,6 +413,66 @@ const useTable = (
     [appState, setVideoState],
   );
 
+  /**
+   * The dungeon table columns, the data access, sorting functions
+   * and any display transformations.
+   */
+  const FFXIVDungeonColumns = useMemo<ColumnDef<RendererVideo>[]>(
+    () => [
+      {
+        id: 'Details',
+        size: 80,
+        accessorFn: (v) => v,
+        sortingFn: (a, b) => detailSort(a, b),
+        header: DetailsHeader,
+        cell: (ctx) =>
+          populateDetailsCell(ctx, language, cloudStatus, setVideoState),
+      },
+      {
+        id: 'Map',
+        size: 300,
+        accessorFn: getFFXIVDungeonName,
+        header: () => MapHeader(language),
+        cell: populateMapCell,
+      },
+      {
+        id: 'Result',
+        accessorFn: (v) => v,
+        sortingFn: (a, b) => resultSort(a, b, language),
+        header: () => ResultHeader(language),
+        cell: (c) => populateResultCell(c, language),
+      },
+      {
+        id: 'Level',
+        accessorFn: (v) => v,
+        sortingFn: levelSort,
+        header: () => LevelHeader(language),
+        cell: populateFFXIVLevelCell,
+      },
+      {
+        id: 'Duration',
+        accessorFn: (v) => v,
+        sortingFn: durationSort,
+        header: () => DurationHeader(language),
+        cell: populateDurationCell,
+      },
+      {
+        id: 'Date',
+        accessorFn: (v) => videoToDate(v),
+        header: () => DateHeader(language),
+        cell: populateDateCell,
+      },
+      {
+        id: 'Viewpoints',
+        accessorFn: (v) => v,
+        header: () => ViewpointsHeader(language),
+        cell: populateViewpointCell,
+        sortingFn: viewPointCountSort,
+      },
+    ],
+    [appState, setVideoState],
+  );
+
   let columns;
 
   switch (category) {
@@ -437,7 +499,7 @@ const useTable = (
       columns = manualColumns;
       break;
     case VideoCategory.FFXIVDungeons:
-      columns = dungeonColumns;
+      columns = FFXIVDungeonColumns;
       break;
     case VideoCategory.FFXIVTrials:
       columns = raidColumns;

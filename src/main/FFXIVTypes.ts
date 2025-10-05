@@ -47,6 +47,8 @@ enum Job {
   DNC = '26',
   RPR = '27',
   SGE = '28',
+  VPR = '29',
+  PCT = '2A',
 }
 
 export { LogType, Job };

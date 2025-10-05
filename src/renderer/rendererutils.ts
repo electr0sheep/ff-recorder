@@ -299,6 +299,7 @@ const getFFXIVJobColor = (job: Job) => {
     case Job.MCH:
     case Job.MNK:
     case Job.NIN:
+    case Job.PCT:
     case Job.PGL:
     case Job.RDM:
     case Job.ROG:
@@ -306,6 +307,7 @@ const getFFXIVJobColor = (job: Job) => {
     case Job.SAM:
     case Job.SMN:
     case Job.THM:
+    case Job.VPR:
       return '#733434';
     case Job.AST:
     case Job.CNJ:
@@ -324,6 +326,10 @@ const getFFXIVJobColor = (job: Job) => {
 };
 
 const getInstanceDifficultyText = (video: RendererVideo, lang: Language) => {
+  if (video.difficulty) {
+    return video.difficulty;
+  }
+
   const { difficultyID } = video;
 
   if (difficultyID === undefined) {
@@ -379,6 +385,10 @@ const getDungeonName = (video: RendererVideo) => {
     return mopChallengeModes[mapID];
   }
 };
+
+const getFFXIVDungeonName = (video: RendererVideo) => {
+  return video.encounterName;
+}
 
 const isMythicPlusUtil = (video: RendererVideo) => {
   const { category, parentCategory } = video;
@@ -1228,4 +1238,5 @@ export {
   getKeyPressEventString,
   videoMatch,
   videoMatchName,
+  getFFXIVDungeonName,
 };

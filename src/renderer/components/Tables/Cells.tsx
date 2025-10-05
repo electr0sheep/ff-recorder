@@ -227,6 +227,13 @@ export const populateLevelCell = (
   return `+${video.keystoneLevel || video.level || 0}`;
 };
 
+export const populateFFXIVLevelCell = (
+  info: CellContext<RendererVideo, unknown>,
+) => {
+  const video = info.getValue() as RendererVideo;
+  return `${video.difficulty || 'Normal'}`;
+};
+
 export const populateAffixesCell = (
   info: CellContext<RendererVideo, unknown>,
 ) => {

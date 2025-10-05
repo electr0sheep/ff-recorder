@@ -159,18 +159,18 @@ const arrRaids = [
 ];
 
 const hwRaids = [
-  'Alexander - the Fist of the Father',
-  'Alexander - the Cuff of the Father',
-  'Alexander - the Arm of the Father',
-  'Alexander - the Burden of the Father',
-  'Alexander - the Fist of the Son',
-  'Alexander - the Cuff of the Son',
-  'Alexander - the Arm of the Son',
-  'Alexander - the Burden of the Son',
-  'Alexander - the Eyes of the Creator',
-  'Alexander - the Breath of the Creator',
-  'Alexander - the Heart of the Creator',
-  'Alexander - the Soul of the Creator',
+  'Alexander - The Fist of the Father',
+  'Alexander - The Cuff of the Father',
+  'Alexander - The Arm of the Father',
+  'Alexander - The Burden of the Father',
+  'Alexander - The Fist of the Son',
+  'Alexander - The Cuff of the Son',
+  'Alexander - The Arm of the Son',
+  'Alexander - The Burden of the Son',
+  'Alexander - The Eyes of the Creator',
+  'Alexander - The Breath of the Creator',
+  'Alexander - The Heart of the Creator',
+  'Alexander - The Soul of the Creator',
 ];
 
 const sbRaids = [
@@ -255,7 +255,7 @@ const shbArs = [
 
 const ewArs = ['Aglaia', 'Euphrosyne', 'Thaleia'];
 
-const dtArs = ['Jeuno: the First Walk', "San d'Oria: the Second Walk"];
+const dtArs = ['Jeuno: The First Walk', "San d'Oria: The Second Walk"];
 
 const ars = arrArs.concat(hwArs, sbArs, shbArs, ewArs, dtArs);
 

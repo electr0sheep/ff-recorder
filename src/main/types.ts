@@ -91,7 +91,8 @@ enum UnitFlags {
  */
 type PlayerDeathType = {
   name: string;
-  specId: number;
+  specId?: number;
+  job?: string;
   date: Date;
   timestamp: number;
   friendly: boolean;
@@ -201,7 +202,7 @@ type Metadata = {
   soloShuffleRoundsWon?: number;
   soloShuffleRoundsPlayed?: number;
   combatants: RawCombatant[];
-  overrun: number;
+  overrun?: number;
   affixes?: number[];
   tag?: string;
   delete?: boolean; // signals video should be deleted when possible

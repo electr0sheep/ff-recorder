@@ -1,6 +1,5 @@
 import FFXIVGenericLogHandler from './FFXIVGenericLogHandler';
 import FFXIVLogLine from './FFXIVLogLine';
-import { VideoCategory } from 'types/VideoCategory';
 import Combatant from 'main/Combatant';
 import {
   ars,
@@ -18,31 +17,60 @@ import Activity from 'activitys/Activity';
 import { LogType, Job } from 'main/FFXIVTypes';
 import FFXIVRaid from 'activitys/FFXIVRaid';
 import FFXIVDungeon from 'activitys/FFXIVDungeon';
+import { PlayerDeathType } from 'main/types';
+import FFXIVAllianceRaid from 'activitys/FFXIVAllianceRaid';
 
 /**
  * FFXIVLogHandler class.
  */
 export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
+  // instanceId: number | undefined;
+  // instanceName: string | undefined;
+  // instanceDifficulty: string | undefined;
+  currentActivity: string | undefined;
+  currentZone: string | undefined;
+  currentZoneID: number | undefined;
+  currentDifficulty: string | undefined;
+  currentCombatants: Combatant[] = [];
+  playerGUID: string | undefined;
+  shouldRecordOnCombat: boolean = false;
+
   constructor(logPath: string) {
     super(logPath, 10);
 
     this.combatLogWatcher.on(
-      LogType.ZONE_CHANGE,
+      LogType.PARTY_FINDER_SETTINGS,
       async (line: FFXIVLogLine) => {
         await this.handleZoneChange(line);
       },
     );
-    this.combatLogWatcher.on(LogType.COMBATANT, async (line: FFXIVLogLine) => {
-      await this.handleCombatant(line);
+    this.combatLogWatcher.on(
+      LogType.ADD_COMBATANT,
+      async (line: FFXIVLogLine) => {
+        await this.handlePartyMember(line);
     });
-    this.combatLogWatcher.on(LogType.PLAYER, async (line: FFXIVLogLine) => {
-      await this.handlePlayer(line);
+    this.combatLogWatcher.on(
+      LogType.CHANGE_PRIMARY_PLAYER,
+      async (line: FFXIVLogLine) => {
+        await this.handlePlayer(line);
     });
-    this.combatLogWatcher.on(LogType.CHAT, async (line: FFXIVLogLine) => {
+    this.combatLogWatcher.on(LogType.LOG_LINE, async (line: FFXIVLogLine) => {
       await this.handleChat(line);
+    });
+    this.combatLogWatcher.on(LogType.DEATH, async (line: FFXIVLogLine) => {
+      await this.handleDeath(line);
+    });
+    // this.combatLogWatcher.on(LogType.COMBATANT, async (line: FFXIVLogLine) => {
+    //   await this.handleCombatant(line);
+    // });
+    this.combatLogWatcher.on(LogType.IN_COMBAT, async (line: FFXIVLogLine) => {
+      await this.handleInCombat(line);
     });
   }
 
+  // TODO: I don't think we need all the checking of settings here. I think
+  // FFXIVGenericLogHandler does that, just try to start the activity and if
+  // it's not allowed, FFXIVGenericLogHandler won't start the recording.
   private async handleZoneChange(line: FFXIVLogLine) {
     const [
       territoryId,
@@ -53,7 +81,7 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       silenceEcho,
       exploreMode,
       levelSync,
-    ] = this.parseLogLine(line);
+    ] = this.parseZoneChangeLogLine(line);
     const [zone, difficulty] = this.parseZone(line.arg(3));
     console.debug('[FFXIVLogHandler] Zone: ', zone);
     console.debug(
@@ -70,12 +98,14 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       trials.includes(zone) &&
       ConfigService.getInstance().get<boolean>('FFXIVRecordTrials')
     ) {
-      const activity = new FFXIVTrial(line.date(), zone, difficulty);
-      // const combatant = new Combatant('12345');
-      // combatant.name = 'Kementari Yavanna';
-      // activity.addCombatant(combatant);
-      // activity.playerGUID = '12345';
-      this.startRecording(activity);
+      this.currentZone = zone;
+      this.currentZoneID = territoryId;
+      this.currentDifficulty = difficulty;
+      this.shouldRecordOnCombat = true;
+      // const activity = new FFXIVTrial(line.date(), zone, difficulty);
+      // activity.zoneID = territoryId;
+      // FFXIVGenericLogHandler.activity = activity;
+      // this.startRecording(activity);
     } else if (
       raids.includes(zone) &&
       ConfigService.getInstance().get<boolean>('FFXIVRecordRaids')
@@ -92,42 +122,54 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       ars.includes(zone) &&
       ConfigService.getInstance().get<boolean>('FFXIVRecordAllianceRaids')
     ) {
-      this.startRecording(line, VideoCategory.FFXIVAllianceRaids);
+      const activity = new FFXIVAllianceRaid(line.date(), zone, 'Normal');
+      this.startRecording(activity);
     } else if (ultimateRaids.includes(zone)) {
-      this.startRecording(line, VideoCategory.FFXIVAllianceRaids);
+      const activity = new FFXIVRaid(line.date(), zone, 'Ultimate');
+      this.startRecording(activity);
     } else if (chaoticArs.includes(zone)) {
-      this.startRecording(line, VideoCategory.FFXIVAllianceRaids);
+      const activity = new FFXIVAllianceRaid(line.date(), zone, 'Chaotic');
+      this.startRecording(activity);
     } else if (variantDungeons.includes(zone)) {
-      this.startRecording(line, VideoCategory.FFXIVAllianceRaids);
+      const activity = new FFXIVDungeon(line.date(), zone, 'Variant');
+      this.startRecording(activity);
     } else if (criterionDungeons.includes(zone)) {
-      this.startRecording(line, VideoCategory.FFXIVAllianceRaids);
+      const activity = new FFXIVDungeon(line.date(), zone, 'Criterion');
+      this.startRecording(activity);
     } else {
+      this.currentZone = undefined;
+      this.currentZoneID = undefined;
+      this.currentDifficulty = undefined;
+      this.currentCombatants = [];
+      this.shouldRecordOnCombat = false;
       this.endRecording(line, false);
     }
   }
 
-  private async handleCombatant(line: FFXIVLogLine) {
+  private async handlePartyMember(line: FFXIVLogLine) {
+    const guid = line.arg(2);
+    const name = line.arg(3);
+    const job = line.arg(4) as Job;
+    const combatant = new Combatant(guid);
+    combatant.name = name;
+    combatant.job = job;
+    this.currentCombatants.push(combatant);
     if (FFXIVGenericLogHandler.activity) {
-      const guid = line.arg(2);
-      const name = line.arg(3);
-      const job = line.arg(4) as Job;
       if (job !== Job.None) {
-        console.debug('[FFXIVLogHandler] handleCombatant: ', guid, name, job);
+        console.debug('[FFXIVLogHandler] handlePartyMember: ', guid, name, job);
         // const job: Job = Job[line.arg(4).slice(-2)];
         // return [guid, name, job];
-        const combatant = new Combatant(guid);
-        combatant.name = name;
-        combatant.job = job;
         FFXIVGenericLogHandler.activity.addCombatant(combatant);
       }
     }
   }
 
   private async handlePlayer(line: FFXIVLogLine) {
+    const guid = line.arg(2);
+    this.playerGUID = guid;
     console.debug('[FFXIVLogHandler] handlePlayer: ', line.arg(2));
     if (FFXIVGenericLogHandler.activity) {
-      const guid = line.arg(2);
-      const name = line.arg(3)
+      const name = line.arg(3);
       const combatant = new Combatant(guid);
       combatant.name = name;
       FFXIVGenericLogHandler.activity.playerGUID = guid;
@@ -136,11 +178,102 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
   }
 
   private async handleChat(line: FFXIVLogLine) {
+    console.debug('[FFXIVLogHandler] handleChat', line.arg(2), line.arg(4));
+    if (!['0840', '0839'].includes(line.arg(2))) {
+      return;
+    }
+    if (
+      !line.arg(4).includes('completion time') &&
+      !line.arg(4).includes('has ended')
+    ) {
+      return;
+    }
     const activity = FFXIVGenericLogHandler.activity;
-    console.debug('[FFXIVLogHandler]', line.arg(2), line.arg(4));
     if (activity) {
-      if (line.arg(2) === '0840' && line.arg(4).includes('completion time')) {
-        this.endRecording(line, true);
+      this.endRecording(line, true);
+    }
+  }
+
+  private async handleDeath(line: FFXIVLogLine) {
+    console.debug('[FFXIVLogHandler] handleDeath', line.arg(2));
+    const activity = FFXIVGenericLogHandler.activity;
+    if (activity) {
+      const deadPlayer = activity.getCombatant(line.arg(2));
+      if (deadPlayer) {
+        // deaths seem to be recorded 3 seconds after the actual death
+        const deathDate = line.date().getTime() / 1000 - 3;
+        const activityStartDate = activity.startDate.getTime() / 1000;
+        const relativeTime = deathDate - activityStartDate;
+        console.debug(
+          '[FFXIVLogHandler] handleDeath',
+          deathDate,
+          activityStartDate,
+          relativeTime,
+        );
+        const playerDeath: PlayerDeathType = {
+          name: deadPlayer.name ? deadPlayer.name : '',
+          job: deadPlayer.job,
+          date: line.date(),
+          timestamp: relativeTime,
+          friendly: true,
+        };
+        activity.addDeath(playerDeath);
+      }
+    }
+  }
+
+  private async handleCombatant(line: FFXIVLogLine) {
+    console.log('[FFXIVLogHandler] handleTargetChange');
+    const activity = FFXIVGenericLogHandler.activity;
+    console.log('[FFXIVLogHandler] handleTargetChange', activity);
+    if (activity && activity instanceof FFXIVTrial) {
+      if (line.arg(4) === 'NPCTargetID') {
+        console.log('[FFXIVLogHandler] handleTargetChange startRecording');
+        const activity = new FFXIVTrial(line.date(), zone, difficulty);
+        activity.zoneID = territoryId;
+        FFXIVGenericLogHandler.activity = activity;
+        this.startRecording(activity);
+      } else if (line.arg(2) === 'Remove') {
+        console.log('[FFXIVLogHandler] handleTargetChange endRecording');
+        this.endRecording(line, false);
+      }
+    }
+    // if (this.instanceName && this.instanceDifficulty) {
+    //   if (
+    //     trials.includes(this.instanceName) &&
+    //     ConfigService.getInstance().get<boolean>('FFXIVRecordTrials')
+    //   ) {
+    //     const activity = new FFXIVTrial(
+    //       line.date(),
+    //       this.instanceName,
+    //       this.instanceDifficulty,
+    //     );
+    //     this.startRecording(activity);
+    //   }
+    // }
+  }
+
+  private async handleInCombat(line: FFXIVLogLine) {
+    if (
+      this.shouldRecordOnCombat &&
+      this.currentZone &&
+      this.currentDifficulty
+    ) {
+      switch (line.arg(3)) {
+        case '0':
+          this.endRecording(line, false);
+          break;
+        case '1':
+          if (trials.includes(this.currentZone)) {
+            const activity = new FFXIVTrial(
+              line.date(),
+              this.currentZone,
+              this.currentDifficulty,
+            );
+            activity.playerGUID = this.playerGUID;
+            this.startRecording(activity, 3);
+          }
+          break;
       }
     }
   }
@@ -149,13 +282,17 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     // line: FFXIVLogLine,
     // category: VideoCategory,
     activity: Activity,
+    offset: number = 0,
   ) {
     // const activity = new Battleground(line.date(), category, 5, Flavour.Retail);
 
     // activity.playerGUID = '12345';
     // activity.addCombatant(new Combatant('12345'));
 
-    await FFXIVGenericLogHandler.startActivity(activity);
+    this.currentCombatants.forEach((combatant) => {
+      activity.addCombatant(combatant);
+    });
+    await FFXIVGenericLogHandler.startActivity(activity, offset);
   }
 
   private async endRecording(line: FFXIVLogLine, success: boolean) {
@@ -165,9 +302,11 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     }
   }
 
-  private parseLogLine(line: FFXIVLogLine) {
+  private parseZoneChangeLogLine(
+    line: FFXIVLogLine,
+  ): [number, string, boolean, boolean, boolean, boolean, boolean, boolean] {
     return [
-      line.arg(2),
+      Number(`0x${line.arg(2)}`),
       line.arg(3),
       line.arg(4) === 'True',
       line.arg(5) === '1',

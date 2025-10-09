@@ -349,6 +349,15 @@ const trials = arrTrials.concat(
   dtTrials,
 );
 
+// const allZones = dungeons.concat(
+//   trials,
+//   raids,
+//   ars,
+//   criterionDungeons,
+//   variantDungeons,
+
+// );
+
 export {
   ultimateRaids,
   deepDungeons,

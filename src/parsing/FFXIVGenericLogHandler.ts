@@ -79,7 +79,7 @@ export default abstract class FFXIVGenericLogHandler {
     this.combatLogWatcher.removeAllListeners();
   }
 
-  protected static async startActivity(activity: Activity) {
+  protected static async startActivity(activity: Activity, offset: number = 0) {
     const { category } = activity;
     const allowed = allowRecordCategory(ConfigService.getInstance(), category);
 
@@ -98,13 +98,16 @@ export default abstract class FFXIVGenericLogHandler {
     // Offset is the number of seconds to cut back into the buffer. That way
     // the buffer length is irrelevant. It is physically impossible to have
     // a negative offset. That would mean an activity started in the future.
-    const offset = (Date.now() - activity.startDate.getTime()) / 1000;
-    console.info(`[FFXIVGenericLogHandler] Calculated offset seconds`, offset);
-    assert(offset >= 0);
+    const actualOffset = (Date.now() - activity.startDate.getTime()) / 1000 + offset;
+    console.info(
+      `[FFXIVGenericLogHandler] Calculated offset seconds`,
+      actualOffset,
+    );
+    assert(actualOffset >= 0);
 
     try {
       FFXIVGenericLogHandler.activity = activity;
-      await Recorder.getInstance().startRecording(offset);
+      await Recorder.getInstance().startRecording(actualOffset);
       FFXIVGenericLogHandler.stateChangeCallback();
     } catch (error) {
       console.error(
@@ -159,7 +162,7 @@ export default abstract class FFXIVGenericLogHandler {
     if (wowRunning) {
       // Immediately queue the buffer start so it's ready if we go instantly into another activity.
       console.info(
-        '[FFXIVGenericLogHandler] Queue buffer start as WoW still running',
+        '[FFXIVGenericLogHandler] Queue buffer start as FFXIV still running',
       );
       recorder.startBuffer(); // No assignment, we don't care about when it's done.
     }

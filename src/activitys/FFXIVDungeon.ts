@@ -5,6 +5,7 @@ import { getLocalePhrase, Language } from '../localisation/translations';
 import { VideoCategory } from '../types/VideoCategory';
 import Activity from './Activity';
 import { Phrase } from 'localisation/phrases';
+import { DungeonTimelineSegment, TimelineSegmentType } from 'main/keystone';
 
 /**
  * Class representing a dungeon encounter.
@@ -14,15 +15,14 @@ export default class FFXIVDungeon extends Activity {
 
   private _encounterName: string;
 
-  private currentHp = 1;
+  private _Duration: number = 0;
 
-  private maxHp = 1;
+  private _timeline: DungeonTimelineSegment[] = [];
 
   constructor(startDate: Date, encounterName: string, difficulty: string) {
     super(startDate, VideoCategory.FFXIVDungeons);
     this._difficulty = difficulty;
     this._encounterName = encounterName;
-    this.overrun = 3; // Even for wipes it's nice to have some overrun.
   }
 
   get encounterName() {
@@ -47,6 +47,22 @@ export default class FFXIVDungeon extends Activity {
     return this._difficulty;
   }
 
+  get Duration() {
+    return this._Duration;
+  }
+
+  set Duration(duration) {
+    this._Duration = duration;
+  }
+
+  get timeline() {
+    return this._timeline;
+  }
+
+  get currentSegment() {
+    return this.timeline.at(-1);
+  }
+
   getMetadata(): Metadata {
     const rawCombatants = Array.from(this.combatantMap.values()).map(
       (combatant: Combatant) => combatant.getRaw(),
@@ -62,7 +78,6 @@ export default class FFXIVDungeon extends Activity {
       result: this.result,
       player: this.player.getRaw(),
       deaths: this.deaths,
-      overrun: this.overrun,
       combatants: rawCombatants,
       start: this.startDate.getTime(),
       uniqueHash: this.getUniqueHash(),
@@ -88,21 +103,43 @@ export default class FFXIVDungeon extends Activity {
     return fileName;
   }
 
-  /**
-   * Update the max and current HP of the boss. Used to calculate the
-   * HP percentage at the end of the fight.
-   *
-   * The log handler doesn't have a way to tell if the unit is the boss or
-   * not (atleast, not without hardcoding boss names), so we let the handler
-   * call this this on any unit, but ignore any units with less than the max HP
-   * of the boss.
-   *
-   * It's a fairly safe bet that the boss will always have the most HP in an
-   * encounter. Can't think of any fights where this isn't true.
-   */
-  public updateHp(current: number, max: number): void {
-    if (max < this.maxHp) return;
-    this.maxHp = max;
-    this.currentHp = current;
+  endDungeon(endDate: Date, Duration: number, result: boolean) {
+    this.endCurrentTimelineSegment(endDate);
+    const lastSegment = this.currentSegment;
+
+    if (lastSegment && lastSegment.length() < 10000) {
+      console.debug(
+        "[ChallengeModeDungeon] Removing last timeline segment because it's too short.",
+      );
+      this.removeLastTimelineSegment();
+    }
+
+    this.Duration = Duration;
+    super.end(endDate, result);
+  }
+
+  addTimelineSegment(segment: DungeonTimelineSegment, endPrevious?: Date) {
+    if (endPrevious) {
+      this.endCurrentTimelineSegment(endPrevious);
+    }
+
+    this.timeline.push(segment);
+  }
+
+  endCurrentTimelineSegment(date: Date) {
+    if (this.currentSegment) {
+      this.currentSegment.logEnd = date;
+    }
+  }
+
+  removeLastTimelineSegment() {
+    this.timeline.pop();
+  }
+
+  getLastBossEncounter(): DungeonTimelineSegment | undefined {
+    return this.timeline
+      .slice()
+      .reverse()
+      .find((v) => v.segmentType === TimelineSegmentType.BossEncounter);
   }
 }

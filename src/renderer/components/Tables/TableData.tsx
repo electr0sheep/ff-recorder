@@ -14,6 +14,7 @@ import {
   videoToDate,
   getDungeonName,
   getFFXIVDungeonName,
+  getFFXIVPullNumber,
 } from 'renderer/rendererutils';
 import { VideoCategory } from 'types/VideoCategory';
 import {
@@ -473,6 +474,70 @@ const useTable = (
     [appState, setVideoState],
   );
 
+  /**
+   * The raid table columns, the data access, sorting functions
+   * and any display transformations.
+   */
+  const FFXIVRaidColumns = useMemo<ColumnDef<RendererVideo>[]>(
+    () => [
+      {
+        id: 'Details',
+        size: 80,
+        accessorFn: (v) => v,
+        sortingFn: (a, b) => detailSort(a, b),
+        header: DetailsHeader,
+        cell: (ctx) =>
+          populateDetailsCell(ctx, language, cloudStatus, setVideoState),
+      },
+      {
+        id: 'Encounter',
+        size: 300,
+        accessorKey: 'encounterName',
+        header: () => EncounterHeader(language),
+        cell: populateEncounterNameCell,
+      },
+      {
+        id: 'Result',
+        accessorFn: (v) => v,
+        sortingFn: (a, b) => resultSort(a, b, language),
+        header: () => ResultHeader(language),
+        cell: (c) => populateResultCell(c, language),
+      },
+      {
+        id: 'Pull',
+        accessorFn: (v) => getFFXIVPullNumber(v, videoState, v.category),
+        header: () => PullHeader(language),
+      },
+      {
+        id: 'Difficulty',
+        accessorFn: (v) => getInstanceDifficultyText(v, language),
+        header: () => DifficultyHeader(language),
+      },
+      {
+        id: 'Duration',
+        accessorFn: (v) => v,
+        sortingFn: durationSort,
+        header: () => DurationHeader(language),
+        cell: populateDurationCell,
+      },
+      {
+        id: 'Date',
+        accessorFn: (v) => videoToDate(v),
+        header: () => DateHeader(language),
+        cell: populateDateCell,
+      },
+      {
+        id: 'Viewpoints',
+        accessorFn: (v) => v,
+        header: () => ViewpointsHeader(language),
+        cell: populateViewpointCell,
+        sortingFn: viewPointCountSort,
+      },
+    ],
+    [language, cloudStatus, videoState, setVideoState],
+  );
+
+
   let columns;
 
   switch (category) {
@@ -502,13 +567,13 @@ const useTable = (
       columns = FFXIVDungeonColumns;
       break;
     case VideoCategory.FFXIVTrials:
-      columns = raidColumns;
+      columns = FFXIVRaidColumns;
       break;
     case VideoCategory.FFXIVRaids:
-      columns = raidColumns;
+      columns = FFXIVRaidColumns;
       break;
     case VideoCategory.FFXIVAllianceRaids:
-      columns = raidColumns;
+      columns = FFXIVDungeonColumns;
       break;
     default:
       throw new Error('Unrecognized category');

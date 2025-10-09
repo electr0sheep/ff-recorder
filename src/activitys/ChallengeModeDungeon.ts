@@ -9,10 +9,7 @@ import {
   mopChallengeModesTimers,
 } from '../main/constants';
 import { VideoCategory } from '../types/VideoCategory';
-import {
-  ChallengeModeTimelineSegment,
-  TimelineSegmentType,
-} from '../main/keystone';
+import { DungeonTimelineSegment, TimelineSegmentType } from '../main/keystone';
 import Activity from './Activity';
 
 export default class ChallengeModeDungeon extends Activity {
@@ -24,7 +21,7 @@ export default class ChallengeModeDungeon extends Activity {
 
   private _CMDuration: number = 0;
 
-  private _timeline: ChallengeModeTimelineSegment[] = [];
+  private _timeline: DungeonTimelineSegment[] = [];
 
   private affixes: number[] = [];
 
@@ -165,10 +162,7 @@ export default class ChallengeModeDungeon extends Activity {
     super.end(endDate, result);
   }
 
-  addTimelineSegment(
-    segment: ChallengeModeTimelineSegment,
-    endPrevious?: Date,
-  ) {
+  addTimelineSegment(segment: DungeonTimelineSegment, endPrevious?: Date) {
     if (endPrevious) {
       this.endCurrentTimelineSegment(endPrevious);
     }
@@ -186,7 +180,7 @@ export default class ChallengeModeDungeon extends Activity {
     this.timeline.pop();
   }
 
-  getLastBossEncounter(): ChallengeModeTimelineSegment | undefined {
+  getLastBossEncounter(): DungeonTimelineSegment | undefined {
     if (this.flavour !== Flavour.Retail) {
       return undefined;
     }
@@ -202,8 +196,8 @@ export default class ChallengeModeDungeon extends Activity {
       (combatant: Combatant) => combatant.getRaw(),
     );
 
-    const rawSegments = this.timeline.map(
-      (segment: ChallengeModeTimelineSegment) => segment.getRaw(),
+    const rawSegments = this.timeline.map((segment: DungeonTimelineSegment) =>
+      segment.getRaw(),
     );
 
     return {

@@ -505,7 +505,7 @@ const useTable = (
       },
       {
         id: 'Pull',
-        accessorFn: (v) => getFFXIVPullNumber(v, videoState, v.category),
+        accessorFn: (v) => getFFXIVPullNumber(v),
         header: () => PullHeader(language),
       },
       {

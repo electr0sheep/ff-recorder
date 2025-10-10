@@ -1097,71 +1097,8 @@ const getPullNumber = (video: RendererVideo, videoState: RendererVideo[]) => {
   return dailyVideosInOrder.indexOf(video) + 1;
 };
 
-const getFFXIVPullNumber = (
-  video: RendererVideo,
-  videoState: RendererVideo[],
-  videoCategory: VideoCategory,
-) => {
-  const videoDate = video.start ? new Date(video.start) : new Date(video.mtime);
-
-  const dailyVideosInOrder: RendererVideo[] = [];
-
-  const raidCategoryState = videoState.filter(
-    (video) => video.category === videoCategory,
-  );
-
-  raidCategoryState.forEach((neighbourVideo) => {
-    const bestDate = neighbourVideo.start
-      ? neighbourVideo.start
-      : neighbourVideo.mtime;
-
-    const neighbourDate = new Date(bestDate);
-
-    // Pulls longer than 6 hours apart are considered from different
-    // sessions and will reset the pull counter.
-    //
-    // This logic is really janky and should probably be rewritten. The
-    // problem here is that if checks for any videos within 6 hours.
-    //
-    // If there are videos on the border (e.g. day raiding) then the
-    // pull count can do weird things like decrement or not increment given
-    // the right timing conditions of the previous sessions raids.
-    const withinThreshold = areDatesWithinSeconds(
-      videoDate,
-      neighbourDate,
-      3600 * 6,
-    );
-
-    if (
-      video.encounterID === undefined ||
-      neighbourVideo.encounterID === undefined
-    ) {
-      return;
-    }
-
-    const sameEncounter = video.encounterID === neighbourVideo.encounterID;
-
-    if (
-      video.difficultyID === undefined ||
-      neighbourVideo.difficultyID === undefined
-    ) {
-      return;
-    }
-
-    const sameDifficulty = video.difficultyID === neighbourVideo.difficultyID;
-
-    if (withinThreshold && sameEncounter && sameDifficulty) {
-      dailyVideosInOrder.push(neighbourVideo);
-    }
-  });
-
-  dailyVideosInOrder.sort((A: RendererVideo, B: RendererVideo) => {
-    const bestTimeA = A.start ? A.start : A.mtime;
-    const bestTimeB = B.start ? B.start : B.mtime;
-    return bestTimeA - bestTimeB;
-  });
-
-  return dailyVideosInOrder.indexOf(video) + 1;
+const getFFXIVPullNumber = (video: RendererVideo) => {
+  return video.pull;
 };
 
 const countUniqueViewpoints = (video: RendererVideo) => {

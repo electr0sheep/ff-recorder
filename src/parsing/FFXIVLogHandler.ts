@@ -34,6 +34,7 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
   currentCombatants: Combatant[] = [];
   playerGUID: string | undefined;
   shouldRecordOnCombat: boolean = false;
+  currentPull: number = 0;
 
   constructor(logPath: string) {
     super(logPath, 10);
@@ -47,13 +48,15 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     this.combatLogWatcher.on(
       LogType.ADD_COMBATANT,
       async (line: FFXIVLogLine) => {
-        await this.handlePartyMember(line);
-    });
+        await this.handleAddCombatant(line);
+      },
+    );
     this.combatLogWatcher.on(
       LogType.CHANGE_PRIMARY_PLAYER,
       async (line: FFXIVLogLine) => {
         await this.handlePlayer(line);
-    });
+      },
+    );
     this.combatLogWatcher.on(LogType.LOG_LINE, async (line: FFXIVLogLine) => {
       await this.handleChat(line);
     });
@@ -142,21 +145,23 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       this.currentDifficulty = undefined;
       this.currentCombatants = [];
       this.shouldRecordOnCombat = false;
+      this.currentPull = 0;
       this.endRecording(line, false);
     }
   }
 
-  private async handlePartyMember(line: FFXIVLogLine) {
-    const guid = line.arg(2);
-    const name = line.arg(3);
+  private async handleAddCombatant(line: FFXIVLogLine) {
+    // Enemies are combatants who don't have a job
     const job = line.arg(4) as Job;
-    const combatant = new Combatant(guid);
-    combatant.name = name;
-    combatant.job = job;
-    this.currentCombatants.push(combatant);
-    if (FFXIVGenericLogHandler.activity) {
-      if (job !== Job.None) {
-        console.debug('[FFXIVLogHandler] handlePartyMember: ', guid, name, job);
+    if (job !== Job.None) {
+      const guid = line.arg(2);
+      const name = line.arg(3);
+      const combatant = new Combatant(guid);
+      combatant.name = name;
+      combatant.job = job;
+      this.currentCombatants.push(combatant);
+      if (FFXIVGenericLogHandler.activity) {
+        // console.debug('[FFXIVLogHandler] handlePartyMember: ', guid, name, job);
         // const job: Job = Job[line.arg(4).slice(-2)];
         // return [guid, name, job];
         FFXIVGenericLogHandler.activity.addCombatant(combatant);
@@ -265,12 +270,15 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
           break;
         case '1':
           if (trials.includes(this.currentZone)) {
+            console.debug('[FFXIVLogHandler] currentPull: ', this.currentPull);
+            this.currentPull += 1;
             const activity = new FFXIVTrial(
               line.date(),
               this.currentZone,
               this.currentDifficulty,
             );
             activity.playerGUID = this.playerGUID;
+            activity.pull = this.currentPull;
             this.startRecording(activity, 3);
           }
           break;

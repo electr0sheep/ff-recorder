@@ -18,11 +18,21 @@ export default class FFXIVTrial extends Activity {
 
   private maxHp = 1;
 
+  private _pull = 1;
+
   constructor(startDate: Date, encounterName: string, difficulty: string) {
     super(startDate, VideoCategory.FFXIVTrials);
     this._difficulty = difficulty;
     this._encounterName = encounterName;
     this.overrun = 3; // Even for wipes it's nice to have some overrun.
+  }
+
+  get pull() {
+    return this._pull;
+  }
+
+  set pull(pullNumber: number) {
+    this._pull = pullNumber;
   }
 
   get encounterName() {
@@ -68,6 +78,7 @@ export default class FFXIVTrial extends Activity {
       start: this.startDate.getTime(),
       uniqueHash: this.getUniqueHash(),
       bossPercent,
+      pull: this.pull,
     };
   }
 

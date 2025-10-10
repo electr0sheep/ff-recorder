@@ -12,7 +12,7 @@ import {
   isSoloShuffleUtil,
   povDiskFirstNameSort,
 } from '../../rendererutils';
-import { specImages } from '../../images';
+import { jobImages, specImages } from '../../images';
 import { getLocalePhrase } from 'localisation/translations';
 import { Phrase } from 'localisation/phrases';
 
@@ -80,6 +80,8 @@ export default function ViewpointSelection(props: IProps) {
       if (knownSpec) {
         specIcon = specImages[combatant._specID as keyof typeof specImages];
       }
+    } else if (combatant._job !== undefined) {
+      specIcon = jobImages[combatant._job as keyof typeof jobImages];
     }
 
     const handleChangePov = (

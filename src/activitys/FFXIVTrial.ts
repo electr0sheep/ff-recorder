@@ -11,7 +11,7 @@ import { Difficulty } from 'main/FFXIVTypes';
  * Class representing a trial encounter.
  */
 export default class FFXIVTrial extends Activity {
-  private _difficulty: string;
+  private _difficulty: Difficulty;
 
   private _encounterName: string;
 
@@ -69,7 +69,7 @@ export default class FFXIVTrial extends Activity {
       category: VideoCategory.FFXIVTrials,
       encounterName: this.encounterName,
       zoneID: this.zoneID,
-      difficulty: this.difficulty,
+      difficulty: Difficulty[this.difficulty],
       duration: this.duration,
       result: this.result,
       player: this.player.getRaw(),
@@ -77,18 +77,18 @@ export default class FFXIVTrial extends Activity {
       overrun: this.overrun,
       combatants: rawCombatants,
       start: this.startDate.getTime(),
-      uniqueHash: this.getUniqueHash(),
+      uniqueHash: this.getUniqueHash(this.pull),
       bossPercent,
       pull: this.pull,
     };
   }
 
   getFileName(): string {
-    let fileName = `${this.encounterName} [${this.difficulty}] (${this.resultInfo})`;
+    let fileName = `${this.encounterName} [${this.pull}] (${this.resultInfo})`;
 
-    if (this.encounterName !== 'Unknown Trial') {
-      fileName = `${this.encounterName}, ${fileName}`;
-    }
+    // if (this.encounterName !== 'Unknown Trial') {
+    //   fileName = `${this.encounterName}, ${fileName}`;
+    // }
 
     try {
       if (this.player.name !== undefined) {

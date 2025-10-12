@@ -57,9 +57,6 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     });
   }
 
-  // TODO: I don't think we need all the checking of settings here. I think
-  // FFXIVGenericLogHandler does that, just try to start the activity and if
-  // it's not allowed, FFXIVGenericLogHandler won't start the recording.
   private async handleContentFinderSettings(line: FFXIVLogLine) {
     const [
       territoryId,
@@ -72,37 +69,32 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       levelSync,
     ] = this.parseZoneChangeLogLine(line);
     const territory = zones.find((zone) => zone.id === territoryId);
-    if (!territory) return;
-    if (
-      territory.type === ContentType.Trial &&
-      ConfigService.getInstance().get<boolean>('FFXIVRecordTrials')
-    ) {
+    if (!territory) {
+      this.currentZone = undefined;
+      this.currentCombatants = [];
+      this.shouldRecordOnCombat = false;
+      this.currentPull = 0;
+      this.endRecording(line, false);
+      return;
+    }
+    if (territory.type === ContentType.Trial) {
       this.currentZone = territory;
       this.shouldRecordOnCombat = true;
-    } else if (
-      territory.type === ContentType.Raid &&
-      ConfigService.getInstance().get<boolean>('FFXIVRecordRaids')
-    ) {
+    } else if (territory.type === ContentType.Raid) {
       const activity = new FFXIVRaid(
         line.date(),
         territory.name,
         territory.difficulty,
       );
       this.startRecording(activity);
-    } else if (
-      territory.type === ContentType.Dungeon &&
-      ConfigService.getInstance().get<boolean>('FFXIVRecordDungeons')
-    ) {
+    } else if (territory.type === ContentType.Dungeon) {
       const activity = new FFXIVDungeon(
         line.date(),
         territory.name,
         territory.difficulty,
       );
       this.startRecording(activity);
-    } else if (
-      territory.type === ContentType['Alliance Raid'] &&
-      ConfigService.getInstance().get<boolean>('FFXIVRecordAllianceRaids')
-    ) {
+    } else if (territory.type === ContentType['Alliance Raid']) {
       const activity = new FFXIVAllianceRaid(
         line.date(),
         territory.name,
@@ -291,28 +283,28 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     ];
   }
 
-//   private parseZone(zone: string): string[] {
-//     console.debug('[FFXIVLogHandler] Raw Zone: ', zone);
-//     const parts = zone.split('(');
-//     if (parts.length === 1) {
-//       return [parts[0], 'Normal'];
-//     }
-//     // The Second Coil of Bahamut - Turn 1 Savage's name is the Second Coil of Bahaumt (Savage) - Turn (1)
-//     if (parts.length === 3) {
-//       if (parts[1].startsWith('Savage')) {
-//         return [
-//           `${parts[0].trim()}${parts[1].split(')')[1]}${parts[2].slice(0, -1)}`,
-//           'savage',
-//         ];
-//       }
-//     }
-//     // Normal Containment Bay's name is Containment Bay (S1T7)
-//     if (parts[0] === 'Containment Bay ') {
-//       return [`Containment Bay ${parts[1].slice(0, -1)}`, 'Normal'];
-//       // The Binding Coil of Bahamut's name is the Binding Coil of Bahamut - Turn (1)
-//     } else if (parts[0].includes('Coil of Bahamut')) {
-//       return [`${parts[0]}${parts[1].slice(0, -1)}`, 'Normal'];
-//     }
-//     return [parts[0].trim(), parts[1].slice(0, -1)];
-//   }
-// }
+  //   private parseZone(zone: string): string[] {
+  //     console.debug('[FFXIVLogHandler] Raw Zone: ', zone);
+  //     const parts = zone.split('(');
+  //     if (parts.length === 1) {
+  //       return [parts[0], 'Normal'];
+  //     }
+  //     // The Second Coil of Bahamut - Turn 1 Savage's name is the Second Coil of Bahaumt (Savage) - Turn (1)
+  //     if (parts.length === 3) {
+  //       if (parts[1].startsWith('Savage')) {
+  //         return [
+  //           `${parts[0].trim()}${parts[1].split(')')[1]}${parts[2].slice(0, -1)}`,
+  //           'savage',
+  //         ];
+  //       }
+  //     }
+  //     // Normal Containment Bay's name is Containment Bay (S1T7)
+  //     if (parts[0] === 'Containment Bay ') {
+  //       return [`Containment Bay ${parts[1].slice(0, -1)}`, 'Normal'];
+  //       // The Binding Coil of Bahamut's name is the Binding Coil of Bahamut - Turn (1)
+  //     } else if (parts[0].includes('Coil of Bahamut')) {
+  //       return [`${parts[0]}${parts[1].slice(0, -1)}`, 'Normal'];
+  //     }
+  //     return [parts[0].trim(), parts[1].slice(0, -1)];
+  //   }
+}

@@ -170,17 +170,23 @@ export default abstract class Activity {
    * reason. Does not include start time as I'm not sure it's totally fixed across multi povs;
    * it might vary slightly with local system clock.
    */
-  getUniqueHash(): string {
+  getUniqueHash(pull: number = 0): string {
     let deterministicFields = [];
 
     if (this.flavour) {
       deterministicFields = [this.category, this.flavour, this.result].map(
         (f) => f.toString(),
       );
+      // this is for FFXIV activities
+      // I need to think more about how to handle this. For unreals, the same party typically
+      // does it twice, so how will we distinguish the tell from the retell?
     } else {
-      deterministicFields = [this.category, this.result].map((f) =>
-        f.toString(),
-      );
+      deterministicFields = [
+        this.category,
+        this.result,
+        this.combatantMap.keys,
+        pull,
+      ].map((f) => f.toString());
     }
 
     const sortedNames: string[] = [];

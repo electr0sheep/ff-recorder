@@ -12,7 +12,7 @@ import { Difficulty } from 'main/FFXIVTypes';
  * Class representing a dungeon encounter.
  */
 export default class FFXIVAllianceRaid extends Activity {
-  private _difficulty: string;
+  private _difficulty: Difficulty;
 
   private _encounterName: string;
 
@@ -20,10 +20,24 @@ export default class FFXIVAllianceRaid extends Activity {
 
   private _timeline: DungeonTimelineSegment[] = [];
 
-  constructor(startDate: Date, encounterName: string, difficulty: Difficulty) {
+  private _pull = 1;
+
+  constructor(
+    startDate: Date,
+    encounterName: string,
+    difficulty: Difficulty = Difficulty.Normal,
+  ) {
     super(startDate, VideoCategory.FFXIVDungeons);
     this._difficulty = difficulty;
     this._encounterName = encounterName;
+  }
+
+  get pull() {
+    return this._pull;
+  }
+
+  set pull(pullNumber: number) {
+    this._pull = pullNumber;
   }
 
   get encounterName() {
@@ -74,7 +88,7 @@ export default class FFXIVAllianceRaid extends Activity {
     return {
       category: VideoCategory.FFXIVDungeons,
       encounterName: this.encounterName,
-      difficulty: this.difficulty,
+      difficulty: Difficulty[this.difficulty],
       duration: this.duration,
       result: this.result,
       player: this.player.getRaw(),
@@ -83,15 +97,12 @@ export default class FFXIVAllianceRaid extends Activity {
       start: this.startDate.getTime(),
       uniqueHash: this.getUniqueHash(),
       bossPercent,
+      pull: this.pull,
     };
   }
 
   getFileName(): string {
-    let fileName = `${this.encounterName} [${this.difficulty}] (${this.resultInfo})`;
-
-    if (this.encounterName !== 'Unknown Dungeon') {
-      fileName = `${this.encounterName}, ${fileName}`;
-    }
+    let fileName = `${this.encounterName} [${this.pull}] (${this.resultInfo})`;
 
     try {
       if (this.player.name !== undefined) {

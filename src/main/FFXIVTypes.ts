@@ -132,10 +132,11 @@ enum ContentType {
 
 type Zone = {
   id: number;
+  rawName: string;
   name: string;
   type: ContentType;
   expansion: Expansion;
-  difficulty: Difficulty;
+  difficulty?: Difficulty;
 };
 
 export { LogType, Job, Difficulty, Expansion, ContentType, Zone };

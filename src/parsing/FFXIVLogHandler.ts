@@ -77,16 +77,28 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       this.endRecording(line, false);
       return;
     }
-    if (territory.type === ContentType.Trial) {
+    if (territory.difficulty === Difficulty.Ultimate) {
       this.currentZone = territory;
       this.shouldRecordOnCombat = true;
-    } else if (territory.type === ContentType.Raid) {
       const activity = new FFXIVRaid(
         line.date(),
         territory.name,
         territory.difficulty,
       );
       this.startRecording(activity);
+    } else if (territory.difficulty === Difficulty.Chaotic) {
+      const activity = new FFXIVAllianceRaid(
+        line.date(),
+        territory.name,
+        territory.difficulty,
+      );
+      this.startRecording(activity);
+    } else if (territory.type === ContentType.Trial) {
+      this.currentZone = territory;
+      this.shouldRecordOnCombat = true;
+    } else if (territory.type === ContentType.Raid) {
+      this.currentZone = territory;
+      this.shouldRecordOnCombat = true;
     } else if (territory.type === ContentType.Dungeon) {
       const activity = new FFXIVDungeon(
         line.date(),
@@ -95,20 +107,6 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       );
       this.startRecording(activity);
     } else if (territory.type === ContentType['Alliance Raid']) {
-      const activity = new FFXIVAllianceRaid(
-        line.date(),
-        territory.name,
-        territory.difficulty,
-      );
-      this.startRecording(activity);
-    } else if (territory.difficulty === Difficulty.Ultimate) {
-      const activity = new FFXIVRaid(
-        line.date(),
-        territory.name,
-        territory.difficulty,
-      );
-      this.startRecording(activity);
-    } else if (territory.difficulty === Difficulty.Chaotic) {
       const activity = new FFXIVAllianceRaid(
         line.date(),
         territory.name,
@@ -157,7 +155,6 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
   private async handlePlayer(line: FFXIVLogLine) {
     const guid = line.arg(2);
     this.playerGUID = guid;
-    console.debug('[FFXIVLogHandler] handlePlayer: ', line.arg(2));
     if (FFXIVGenericLogHandler.activity) {
       const name = line.arg(3);
       const combatant = new Combatant(guid);
@@ -168,7 +165,6 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
   }
 
   private async handleChat(line: FFXIVLogLine) {
-    console.debug('[FFXIVLogHandler] handleChat', line.arg(2), line.arg(4));
     if (!['0840', '0839'].includes(line.arg(2))) {
       return;
     }
@@ -185,7 +181,6 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
   }
 
   private async handleDeath(line: FFXIVLogLine) {
-    console.debug('[FFXIVLogHandler] handleDeath', line.arg(2));
     const activity = FFXIVGenericLogHandler.activity;
     if (activity) {
       const deadPlayer = activity.getCombatant(line.arg(2));
@@ -194,12 +189,6 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
         const deathDate = line.date().getTime() / 1000 - 3;
         const activityStartDate = activity.startDate.getTime() / 1000;
         const relativeTime = deathDate - activityStartDate;
-        console.debug(
-          '[FFXIVLogHandler] handleDeath',
-          deathDate,
-          activityStartDate,
-          relativeTime,
-        );
         const playerDeath: PlayerDeathType = {
           name: deadPlayer.name ? deadPlayer.name : '',
           job: deadPlayer.job,
@@ -238,9 +227,28 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
           break;
         case '1':
           if (this.currentZone.type === ContentType.Trial) {
-            console.debug('[FFXIVLogHandler] currentPull: ', this.currentPull);
             this.currentPull += 1;
             const activity = new FFXIVTrial(
+              line.date(),
+              this.currentZone.name,
+              this.currentZone.difficulty,
+            );
+            activity.playerGUID = this.playerGUID;
+            activity.pull = this.currentPull;
+            this.startRecording(activity, 3);
+          } else if (this.currentZone.type === ContentType.Raid) {
+            this.currentPull += 1;
+            const activity = new FFXIVRaid(
+              line.date(),
+              this.currentZone.name,
+              this.currentZone.difficulty,
+            );
+            activity.playerGUID = this.playerGUID;
+            activity.pull = this.currentPull;
+            this.startRecording(activity, 3);
+          } else if (this.currentZone.difficulty === Difficulty.Chaotic) {
+            this.currentPull += 1;
+            const activity = new FFXIVAllianceRaid(
               line.date(),
               this.currentZone.name,
               this.currentZone.difficulty,

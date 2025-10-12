@@ -20,7 +20,11 @@ export default class FFXIVDungeon extends Activity {
 
   private _timeline: DungeonTimelineSegment[] = [];
 
-  constructor(startDate: Date, encounterName: string, difficulty: Difficulty) {
+  constructor(
+    startDate: Date,
+    encounterName: string,
+    difficulty: Difficulty = Difficulty.Normal,
+  ) {
     super(startDate, VideoCategory.FFXIVDungeons);
     this._difficulty = difficulty;
     this._encounterName = encounterName;
@@ -74,7 +78,7 @@ export default class FFXIVDungeon extends Activity {
     return {
       category: VideoCategory.FFXIVDungeons,
       encounterName: this.encounterName,
-      difficulty: this.difficulty,
+      difficulty: Difficulty[this.difficulty],
       duration: this.duration,
       result: this.result,
       player: this.player.getRaw(),

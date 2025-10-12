@@ -11,7 +11,7 @@ import { Difficulty } from 'main/FFXIVTypes';
  * Class representing a raid encounter.
  */
 export default class FFXIVRaid extends Activity {
-  private _difficulty: string;
+  private _difficulty: Difficulty;
 
   private _encounterName: string;
 
@@ -19,11 +19,25 @@ export default class FFXIVRaid extends Activity {
 
   private maxHp = 1;
 
-  constructor(startDate: Date, encounterName: string, difficulty: Difficulty) {
+  private _pull = 1;
+
+  constructor(
+    startDate: Date,
+    encounterName: string,
+    difficulty: Difficulty = Difficulty.Normal,
+  ) {
     super(startDate, VideoCategory.FFXIVRaids);
     this._difficulty = difficulty;
     this._encounterName = encounterName;
     this.overrun = 3; // Even for wipes it's nice to have some overrun.
+  }
+
+  get pull() {
+    return this._pull;
+  }
+
+  set pull(pullNumber: number) {
+    this._pull = pullNumber;
   }
 
   get encounterName() {
@@ -58,7 +72,7 @@ export default class FFXIVRaid extends Activity {
     return {
       category: VideoCategory.FFXIVRaids,
       encounterName: this.encounterName,
-      difficulty: this.difficulty,
+      difficulty: Difficulty[this.difficulty],
       duration: this.duration,
       result: this.result,
       player: this.player.getRaw(),
@@ -68,15 +82,12 @@ export default class FFXIVRaid extends Activity {
       start: this.startDate.getTime(),
       uniqueHash: this.getUniqueHash(),
       bossPercent,
+      pull: this.pull,
     };
   }
 
   getFileName(): string {
-    let fileName = `${this.encounterName} [${this.difficulty}] (${this.resultInfo})`;
-
-    if (this.encounterName !== 'Unknown Raid') {
-      fileName = `${this.encounterName}, ${fileName}`;
-    }
+    let fileName = `${this.encounterName} (${Difficulty[this.difficulty]}) [${this.pull}] (${this.resultInfo})`;
 
     try {
       if (this.player.name !== undefined) {

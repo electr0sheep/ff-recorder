@@ -21,7 +21,11 @@ export default class FFXIVTrial extends Activity {
 
   private _pull = 1;
 
-  constructor(startDate: Date, encounterName: string, difficulty: Difficulty) {
+  constructor(
+    startDate: Date,
+    encounterName: string,
+    difficulty: Difficulty = Difficulty.Normal,
+  ) {
     super(startDate, VideoCategory.FFXIVTrials);
     this._difficulty = difficulty;
     this._encounterName = encounterName;
@@ -84,11 +88,7 @@ export default class FFXIVTrial extends Activity {
   }
 
   getFileName(): string {
-    let fileName = `${this.encounterName} [${this.pull}] (${this.resultInfo})`;
-
-    // if (this.encounterName !== 'Unknown Trial') {
-    //   fileName = `${this.encounterName}, ${fileName}`;
-    // }
+    let fileName = `${this.encounterName} (${Difficulty[this.difficulty]}) [${this.pull}] (${this.resultInfo})`;
 
     try {
       if (this.player.name !== undefined) {

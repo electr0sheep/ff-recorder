@@ -5,6 +5,7 @@ import { getLocalePhrase, Language } from '../localisation/translations';
 import { VideoCategory } from '../types/VideoCategory';
 import Activity from './Activity';
 import { Phrase } from 'localisation/phrases';
+import { Difficulty } from 'main/FFXIVTypes';
 
 /**
  * Class representing a raid encounter.
@@ -18,7 +19,7 @@ export default class FFXIVRaid extends Activity {
 
   private maxHp = 1;
 
-  constructor(startDate: Date, encounterName: string, difficulty: string) {
+  constructor(startDate: Date, encounterName: string, difficulty: Difficulty) {
     super(startDate, VideoCategory.FFXIVRaids);
     this._difficulty = difficulty;
     this._encounterName = encounterName;

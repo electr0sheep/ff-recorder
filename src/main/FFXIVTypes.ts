@@ -38,7 +38,7 @@ enum LogType {
   RSV = '262',
   ACTOR_CAST_EXTRA = '263',
   ABILITY_EXTRA = '264',
-  PARTY_FINDER_SETTINGS = '265',
+  CONTENT_FINDER_SETTINGS = '265',
   NPC_YELL = '266',
   BATTLE_TALK_2 = '267',
   COUNTDOWN = '268',
@@ -96,4 +96,46 @@ enum Job {
   PCT = '2A',
 }
 
-export { LogType, Job };
+enum Difficulty {
+  'Normal',
+  'Hard',
+  'Extreme',
+  'Savage',
+  'Chaotic',
+  'Ultimate',
+  'Unreal',
+  'Quantum',
+}
+
+enum Expansion {
+  'A Realm Reborn',
+  'Heavensward',
+  'Stormblood',
+  'Shadowbringers',
+  'Endwalker',
+  'Dawntrail',
+}
+
+enum ContentType {
+  'Dungeon',
+  'Trial',
+  'Raid',
+  'Alliance Raid',
+  'Guildhest',
+  'Field Operation',
+  'Treasure Dungeon',
+  'Deep Dungeon',
+  'Variant Dungeon',
+  'Criterion Dungeon',
+  'PVP',
+}
+
+type Zone = {
+  id: number;
+  name: string;
+  type: ContentType;
+  expansion: Expansion;
+  difficulty: Difficulty;
+};
+
+export { LogType, Job, Difficulty, Expansion, ContentType, Zone };

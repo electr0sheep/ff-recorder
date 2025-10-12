@@ -5,6 +5,7 @@ import { getLocalePhrase, Language } from '../localisation/translations';
 import { VideoCategory } from '../types/VideoCategory';
 import Activity from './Activity';
 import { Phrase } from 'localisation/phrases';
+import { Difficulty } from 'main/FFXIVTypes';
 
 /**
  * Class representing a trial encounter.
@@ -20,7 +21,7 @@ export default class FFXIVTrial extends Activity {
 
   private _pull = 1;
 
-  constructor(startDate: Date, encounterName: string, difficulty: string) {
+  constructor(startDate: Date, encounterName: string, difficulty: Difficulty) {
     super(startDate, VideoCategory.FFXIVTrials);
     this._difficulty = difficulty;
     this._encounterName = encounterName;

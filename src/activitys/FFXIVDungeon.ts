@@ -6,12 +6,13 @@ import { VideoCategory } from '../types/VideoCategory';
 import Activity from './Activity';
 import { Phrase } from 'localisation/phrases';
 import { DungeonTimelineSegment, TimelineSegmentType } from 'main/keystone';
+import { Difficulty } from 'main/FFXIVTypes';
 
 /**
  * Class representing a dungeon encounter.
  */
 export default class FFXIVDungeon extends Activity {
-  private _difficulty: string;
+  private _difficulty: Difficulty;
 
   private _encounterName: string;
 
@@ -19,7 +20,7 @@ export default class FFXIVDungeon extends Activity {
 
   private _timeline: DungeonTimelineSegment[] = [];
 
-  constructor(startDate: Date, encounterName: string, difficulty: string) {
+  constructor(startDate: Date, encounterName: string, difficulty: Difficulty) {
     super(startDate, VideoCategory.FFXIVDungeons);
     this._difficulty = difficulty;
     this._encounterName = encounterName;

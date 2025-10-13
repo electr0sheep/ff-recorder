@@ -1,8 +1,7 @@
 import FFXIVGenericLogHandler from './FFXIVGenericLogHandler';
 import FFXIVLogLine from './FFXIVLogLine';
 import Combatant from 'main/Combatant';
-import { zones } from 'main/FFXIVConstants';
-import ConfigService from 'config/ConfigService';
+import { zones, bosses } from 'main/FFXIVConstants';
 import FFXIVTrial from 'activitys/FFXIVTrial';
 import Activity from 'activitys/Activity';
 import { LogType, Job, ContentType, Zone, Difficulty } from 'main/FFXIVTypes';
@@ -10,17 +9,23 @@ import FFXIVRaid from 'activitys/FFXIVRaid';
 import FFXIVDungeon from 'activitys/FFXIVDungeon';
 import { PlayerDeathType } from 'main/types';
 import FFXIVAllianceRaid from 'activitys/FFXIVAllianceRaid';
+import { DungeonTimelineSegment, TimelineSegmentType } from 'main/keystone';
+
+// everything seems to be off by 3 seconds
+const OFFSET = 3;
 
 /**
  * FFXIVLogHandler class.
  */
+
+// TODO: I'm not sure the log types with id > 260 will work without IINACT, so probably need to not use them
 export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
-  currentActivity: string | undefined;
   currentZone: Zone | undefined;
   currentCombatants: Combatant[] = [];
   playerGUID: string | undefined;
   shouldRecordOnCombat: boolean = false;
   currentPull: number = 0;
+  currentDungeonBossId: [number, string] | undefined;
 
   constructor(logPath: string) {
     super(logPath, 10);
@@ -55,6 +60,15 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     this.combatLogWatcher.on(LogType.IN_COMBAT, async (line: FFXIVLogLine) => {
       await this.handleInCombat(line);
     });
+    // this.combatLogWatcher.on(
+    //   LogType.TARGET_CHANGE,
+    //   async (line: FFXIVLogLine) => {
+    //     await this.handleTargetChange(line);
+    //   },
+    // );
+    this.combatLogWatcher.on(LogType.ABILITY, async (line: FFXIVLogLine) => {
+      await this.handleAbility(line);
+    });
   }
 
   private async handleContentFinderSettings(line: FFXIVLogLine) {
@@ -77,8 +91,8 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       this.endRecording(line, false);
       return;
     }
+    this.currentZone = territory;
     if (territory.difficulty === Difficulty.Ultimate) {
-      this.currentZone = territory;
       this.shouldRecordOnCombat = true;
       const activity = new FFXIVRaid(
         line.date(),
@@ -94,10 +108,8 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       );
       this.startRecording(activity);
     } else if (territory.type === ContentType.Trial) {
-      this.currentZone = territory;
       this.shouldRecordOnCombat = true;
     } else if (territory.type === ContentType.Raid) {
-      this.currentZone = territory;
       this.shouldRecordOnCombat = true;
     } else if (territory.type === ContentType.Dungeon) {
       const activity = new FFXIVDungeon(
@@ -105,6 +117,12 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
         territory.name,
         territory.difficulty,
       );
+      const segment = new DungeonTimelineSegment(
+        TimelineSegmentType.Trash,
+        line.date(),
+        0,
+      );
+      activity.addTimelineSegment(segment);
       this.startRecording(activity);
     } else if (territory.type === ContentType['Alliance Raid']) {
       const activity = new FFXIVAllianceRaid(
@@ -127,16 +145,12 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
         territory.difficulty,
       );
       this.startRecording(activity);
-    } else {
-      this.currentZone = undefined;
-      this.currentCombatants = [];
-      this.shouldRecordOnCombat = false;
-      this.currentPull = 0;
-      this.endRecording(line, false);
     }
   }
 
   private async handleAddCombatant(line: FFXIVLogLine) {
+    if (!this.currentZone) return;
+
     // Enemies are combatants who don't have a job
     const job = line.arg(4) as Job;
     if (job !== Job.None) {
@@ -148,6 +162,14 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       this.currentCombatants.push(combatant);
       if (FFXIVGenericLogHandler.activity) {
         FFXIVGenericLogHandler.activity.addCombatant(combatant);
+      }
+    } else {
+      if (bosses.has(Number(line.arg(9)))) {
+        // We need to record the id of the boss, it's not constant
+        console.debug(
+          `[FFXIVLogHandler] handleAddCombatant: Adding boss ${[Number(line.arg(9)), line.arg(2)]}`,
+        );
+        this.currentDungeonBossId = [Number(line.arg(9)), line.arg(2)];
       }
     }
   }
@@ -186,7 +208,7 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       const deadPlayer = activity.getCombatant(line.arg(2));
       if (deadPlayer) {
         // deaths seem to be recorded 3 seconds after the actual death
-        const deathDate = line.date().getTime() / 1000 - 3;
+        const deathDate = line.date().getTime() / 1000 - OFFSET;
         const activityStartDate = activity.startDate.getTime() / 1000;
         const relativeTime = deathDate - activityStartDate;
         const playerDeath: PlayerDeathType = {
@@ -197,25 +219,45 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
           friendly: true,
         };
         activity.addDeath(playerDeath);
+      } else if (
+        this.currentDungeonBossId &&
+        this.currentDungeonBossId[1] === line.arg(2) &&
+        this.currentZone?.type === ContentType.Dungeon
+      ) {
+        // end dungeon boss segment
+        const activity = FFXIVGenericLogHandler.activity as FFXIVDungeon;
+        const segment = new DungeonTimelineSegment(
+          TimelineSegmentType.Trash,
+          line.date(),
+          this.getRelativeTimestampForTimelineSegment(line.date()),
+        );
+        activity.addTimelineSegment(segment, line.date());
       }
     }
   }
 
   // private async handleCombatant(line: FFXIVLogLine) {
-  //   console.log('[FFXIVLogHandler] handleTargetChange');
-  //   const activity = FFXIVGenericLogHandler.activity;
-  //   console.log('[FFXIVLogHandler] handleTargetChange', activity);
-  //   if (activity && activity instanceof FFXIVTrial) {
-  //     if (line.arg(4) === 'NPCTargetID') {
-  //       console.log('[FFXIVLogHandler] handleTargetChange startRecording');
-  //       const activity = new FFXIVTrial(line.date(), this.currentZone?.name, this.currentZone.difficulty);
-  //       activity.zoneID = territoryId;
-  //       FFXIVGenericLogHandler.activity = activity;
-  //       this.startRecording(activity);
-  //     } else if (line.arg(2) === 'Remove') {
-  //       console.log('[FFXIVLogHandler] handleTargetChange endRecording');
-  //       this.endRecording(line, false);
-  //     }
+  //   console.debug(`[FFXIVLogHandler] handleCombatant: ${line.arg(3)}`);
+  //   console.debug(
+  //     `[FFXIVLogHandler] handleCombatant: currentDungeonBossId ${this.currentDungeonBossId}`,
+  //   );
+  //   // start boss segment in dungeon
+  //   if (
+  //     this.currentDungeonBossId &&
+  //     this.currentDungeonBossId[1] === line.arg(3) &&
+  //     this.currentZone?.type === ContentType.Dungeon
+  //   ) {
+  //     console.debug(
+  //       `[FFXIVLogHandler] handleCombatant: Adding segment for boss ${bosses.get(this.currentDungeonBossId[0])}`,
+  //     );
+  //     const activity = FFXIVGenericLogHandler.activity as FFXIVDungeon;
+  //     const segment = new DungeonTimelineSegment(
+  //       TimelineSegmentType.BossEncounter,
+  //       line.date(),
+  //       Number(line.date()),
+  //       this.currentDungeonBossId[0],
+  //     );
+  //     activity.addTimelineSegment(segment, line.date());
   //   }
   // }
 
@@ -262,6 +304,58 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     }
   }
 
+  // private async handleTargetChange(line: FFXIVLogLine) {
+  //   console.debug(`[FFXIVLogHandler] handleTargetChange: ${line.arg(2)}`);
+  //   console.debug(
+  //     `[FFXIVLogHandler] handleTargetChange: currentDungeonBossId ${this.currentDungeonBossId}`,
+  //   );
+  //   // start boss segment in dungeon
+  //   if (
+  //     this.currentDungeonBossId &&
+  //     this.currentDungeonBossId[1] === line.arg(2) &&
+  //     this.currentZone?.type === ContentType.Dungeon
+  //   ) {
+  //     console.debug(
+  //       `[FFXIVLogHandler] handleTargetChange: Adding segment for boss ${bosses.get(this.currentDungeonBossId[0])}`,
+  //     );
+  //     const activity = FFXIVGenericLogHandler.activity as FFXIVDungeon;
+  //     const segment = new DungeonTimelineSegment(
+  //       TimelineSegmentType.BossEncounter,
+  //       line.date(),
+  //       Number(line.date()),
+  //       this.currentDungeonBossId[0],
+  //     );
+  //     activity.addTimelineSegment(segment, line.date());
+  //   }
+  // }
+
+  private async handleAbility(line: FFXIVLogLine) {
+    console.debug(`[FFXIVLogHandler] handleAbility: ${line.arg(2)}`);
+    console.debug(
+      `[FFXIVLogHandler] handleAbility: currentDungeonBossId ${this.currentDungeonBossId}`,
+    );
+    // start boss segment in dungeon
+    if (
+      this.currentDungeonBossId &&
+      this.currentDungeonBossId[1] === line.arg(2) &&
+      this.currentZone?.type === ContentType.Dungeon &&
+      (FFXIVGenericLogHandler.activity as FFXIVDungeon).currentSegment
+        ?.segmentType !== TimelineSegmentType.BossEncounter
+    ) {
+      console.debug(
+        `[FFXIVLogHandler] handleAbility: Adding segment for boss ${bosses.get(this.currentDungeonBossId[0])}`,
+      );
+      const activity = FFXIVGenericLogHandler.activity as FFXIVDungeon;
+      const segment = new DungeonTimelineSegment(
+        TimelineSegmentType.BossEncounter,
+        line.date(),
+        this.getRelativeTimestampForTimelineSegment(line.date()),
+        this.currentDungeonBossId[0],
+      );
+      activity.addTimelineSegment(segment, line.date());
+    }
+  }
+
   private async startRecording(activity: Activity, offset: number = 0) {
     this.currentCombatants.forEach((combatant) => {
       activity.addCombatant(combatant);
@@ -289,6 +383,21 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       line.arg(8) === '1',
       line.arg(9) === '1',
     ];
+  }
+
+  private getRelativeTimestampForTimelineSegment(eventDate: Date) {
+    if (!FFXIVGenericLogHandler.activity) {
+      console.error(
+        '[RetailLogHandler] getRelativeTimestampForTimelineSegment called but no active activity',
+      );
+
+      return 0;
+    }
+
+    const activityStartDate = FFXIVGenericLogHandler.activity.startDate;
+    const relativeTime =
+      (eventDate.getTime() - activityStartDate.getTime()) / 1000 - OFFSET;
+    return relativeTime;
   }
 
   //   private parseZone(zone: string): string[] {

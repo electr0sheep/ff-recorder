@@ -73,20 +73,22 @@ export default class FFXIVDungeon extends Activity {
       (combatant: Combatant) => combatant.getRaw(),
     );
 
-    const bossPercent = Math.round((100 * this.currentHp) / this.maxHp);
+    const rawSegments = this.timeline.map((segment: DungeonTimelineSegment) =>
+      segment.getRaw(),
+    );
 
     return {
       category: VideoCategory.FFXIVDungeons,
       encounterName: this.encounterName,
       difficulty: Difficulty[this.difficulty],
       duration: this.duration,
+      challengeModeTimeline: rawSegments,
       result: this.result,
       player: this.player.getRaw(),
       deaths: this.deaths,
       combatants: rawCombatants,
       start: this.startDate.getTime(),
       uniqueHash: this.getUniqueHash(),
-      bossPercent,
     };
   }
 

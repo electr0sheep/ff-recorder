@@ -40,6 +40,7 @@ import {
   getOwnDeathMarkers,
   getRoundMarkers,
   isClip,
+  isFFXIVDungeon,
   isMythicPlusUtil,
   isSoloShuffleUtil,
   secToMmSs,
@@ -248,7 +249,10 @@ export const VideoPlayer = (props: IProps) => {
   const getActiveMarkers = () => {
     const activeMarkers: VideoMarker[] = [];
 
-    if (isMythicPlusUtil(videos[0]) && config.encounterMarkers) {
+    if (
+      (isMythicPlusUtil(videos[0]) || isFFXIVDungeon(videos[0])) &&
+      config.encounterMarkers
+    ) {
       getEncounterMarkers(videos[0]).forEach((m) => activeMarkers.push(m));
     }
 

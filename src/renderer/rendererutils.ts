@@ -18,10 +18,7 @@ import {
   WoWCharacterClassType,
   WoWClassColor,
 } from 'main/constants';
-import {
-  TimelineSegmentType,
-  RawChallengeModeTimelineSegment,
-} from 'main/keystone';
+import { TimelineSegmentType, RawDungeonTimelineSegment } from 'main/keystone';
 import {
   MarkerColors,
   DeathMarkers,
@@ -239,45 +236,45 @@ const getRoundMarkers = (video: RendererVideo) => {
  * encounters as orange and the trash as purple.
  */
 const getEncounterMarkers = (video: RendererVideo) => {
+  console.debug('getEncounterMarkers');
   const videoMarkers: VideoMarker[] = [];
 
   if (video.challengeModeTimeline === undefined) {
     return videoMarkers;
   }
 
-  video.challengeModeTimeline.forEach(
-    (segment: RawChallengeModeTimelineSegment) => {
-      if (
-        segment.logEnd === undefined ||
-        segment.logStart === undefined ||
-        segment.segmentType === undefined ||
-        segment.segmentType !== TimelineSegmentType.BossEncounter ||
-        segment.timestamp === undefined
-      ) {
-        return;
-      }
+  video.challengeModeTimeline.forEach((segment: RawDungeonTimelineSegment) => {
+    if (
+      segment.logEnd === undefined ||
+      segment.logStart === undefined ||
+      segment.segmentType === undefined ||
+      segment.segmentType !== TimelineSegmentType.BossEncounter ||
+      segment.timestamp === undefined
+    ) {
+      return;
+    }
 
-      const segmentEnd = new Date(segment.logEnd);
-      const segmentStart = new Date(segment.logStart);
+    const segmentEnd = new Date(segment.logEnd);
+    const segmentStart = new Date(segment.logStart);
 
-      const segmentDuration = Math.floor(
-        (segmentEnd.getTime() - segmentStart.getTime()) / 1000,
-      );
+    const segmentDuration = Math.floor(
+      (segmentEnd.getTime() - segmentStart.getTime()) / 1000,
+    );
 
-      let markerText = '';
+    let markerText = '';
 
-      if (segment.encounterId !== undefined) {
-        markerText = dungeonEncounters[segment.encounterId];
-      }
+    if (segment.encounterId !== undefined) {
+      markerText = dungeonEncounters[segment.encounterId];
+    }
 
-      videoMarkers.push({
-        time: segment.timestamp,
-        text: markerText,
-        color: MarkerColors.ENCOUNTER,
-        duration: segmentDuration,
-      });
-    },
-  );
+    console.debug('pushing video marker');
+    videoMarkers.push({
+      time: segment.timestamp,
+      text: markerText,
+      color: MarkerColors.ENCOUNTER,
+      duration: segmentDuration,
+    });
+  });
 
   return videoMarkers;
 };
@@ -388,7 +385,7 @@ const getDungeonName = (video: RendererVideo) => {
 
 const getFFXIVDungeonName = (video: RendererVideo) => {
   return video.encounterName;
-}
+};
 
 const isMythicPlusUtil = (video: RendererVideo) => {
   const { category, parentCategory } = video;
@@ -396,6 +393,15 @@ const isMythicPlusUtil = (video: RendererVideo) => {
   return (
     category === VideoCategory.MythicPlus ||
     parentCategory === VideoCategory.MythicPlus
+  );
+};
+
+const isFFXIVDungeon = (video: RendererVideo) => {
+  const { category, parentCategory } = video;
+
+  return (
+    category === VideoCategory.FFXIVDungeons ||
+    parentCategory === VideoCategory.FFXIVDungeons
   );
 };
 
@@ -1244,4 +1250,5 @@ export {
   videoMatchName,
   getFFXIVDungeonName,
   getFFXIVPullNumber,
+  isFFXIVDungeon,
 };

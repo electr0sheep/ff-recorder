@@ -15,10 +15,7 @@ import LogHandler from './LogHandler';
 import Battleground from '../activitys/Battleground';
 import ChallengeModeDungeon from '../activitys/ChallengeModeDungeon';
 
-import {
-  ChallengeModeTimelineSegment,
-  TimelineSegmentType,
-} from '../main/keystone';
+import { DungeonTimelineSegment, TimelineSegmentType } from '../main/keystone';
 
 import { Flavour } from '../main/types';
 import SoloShuffle from '../activitys/SoloShuffle';
@@ -223,7 +220,7 @@ export default class RetailLogHandler extends LogHandler {
       Flavour.Retail,
     );
 
-    const initialSegment = new ChallengeModeTimelineSegment(
+    const initialSegment = new DungeonTimelineSegment(
       TimelineSegmentType.Trash,
       activity.startDate,
       0,
@@ -333,7 +330,7 @@ export default class RetailLogHandler extends LogHandler {
     const activeChallengeMode = LogHandler.activity as ChallengeModeDungeon;
     const eventDate = line.date();
 
-    const segment = new ChallengeModeTimelineSegment(
+    const segment = new DungeonTimelineSegment(
       TimelineSegmentType.BossEncounter,
       eventDate,
       this.getRelativeTimestampForTimelineSegment(eventDate),
@@ -377,7 +374,7 @@ export default class RetailLogHandler extends LogHandler {
         currentSegment.result = result;
       }
 
-      const segment = new ChallengeModeTimelineSegment(
+      const segment = new DungeonTimelineSegment(
         TimelineSegmentType.Trash,
         eventDate,
         this.getRelativeTimestampForTimelineSegment(eventDate),

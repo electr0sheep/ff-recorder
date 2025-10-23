@@ -28,6 +28,7 @@ export default class FFXIVDungeon extends Activity {
     super(startDate, VideoCategory.FFXIVDungeons);
     this._difficulty = difficulty;
     this._encounterName = encounterName;
+    this.overrun = 3;
   }
 
   get encounterName() {
@@ -84,6 +85,7 @@ export default class FFXIVDungeon extends Activity {
       duration: this.duration,
       challengeModeTimeline: rawSegments,
       result: this.result,
+      overrun: this.overrun,
       player: this.player.getRaw(),
       deaths: this.deaths,
       combatants: rawCombatants,
@@ -116,7 +118,7 @@ export default class FFXIVDungeon extends Activity {
 
     if (lastSegment && lastSegment.length() < 10000) {
       console.debug(
-        "[ChallengeModeDungeon] Removing last timeline segment because it's too short.",
+        "[FFXIVDungeon] Removing last timeline segment because it's too short.",
       );
       this.removeLastTimelineSegment();
     }

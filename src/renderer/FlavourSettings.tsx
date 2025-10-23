@@ -41,8 +41,6 @@ const FlavourSettings: React.FC<IProps> = (props: IProps) => {
       eraLogPath: config.eraLogPath,
       recordRetailPtr: config.recordRetailPtr,
       retailPtrLogPath: config.retailPtrLogPath,
-      recordFFXIV: config.recordFFXIV,
-      FFXIVLogPath: config.FFXIVLogPath,
     });
 
     ipc.reconfigureBase();
@@ -55,8 +53,6 @@ const FlavourSettings: React.FC<IProps> = (props: IProps) => {
     config.eraLogPath,
     config.recordRetailPtr,
     config.retailPtrLogPath,
-    config.recordFFXIV,
-    config.FFXIVLogPath,
   ]);
 
   const isComponentDisabled = () => {
@@ -435,92 +431,6 @@ const FlavourSettings: React.FC<IProps> = (props: IProps) => {
     );
   };
 
-  const setRecordFFXIV = (checked: boolean) => {
-    setConfig((prevState) => {
-      return {
-        ...prevState,
-        recordFFXIV: checked,
-      };
-    });
-  };
-
-  const setFFXIVLogPath = async () => {
-    if (isComponentDisabled()) {
-      return;
-    }
-
-    const newPath = await pathSelect();
-
-    if (newPath === '') {
-      return;
-    }
-
-    setConfig((prevState) => {
-      return {
-        ...prevState,
-        FFXIVLogPath: newPath,
-      };
-    });
-  };
-
-  const getFFXIVSettings = () => {
-    if (isComponentDisabled()) {
-      return <></>;
-    }
-
-    return (
-      <div className="flex flex-row gap-x-6">
-        <div className="flex flex-col w-[140px]">
-          <Label htmlFor="recordFFXIV" className="flex items-center">
-            {getLocalePhrase(appState.language, Phrase.RecordFFXIVLabel)}
-            <Tooltip
-              content={getLocalePhrase(
-                appState.language,
-                configSchema.recordFFXIV.description,
-              )}
-              side="top"
-            >
-              <Info size={20} className="inline-flex ml-2" />
-            </Tooltip>
-          </Label>
-          <div className="flex h-10 items-center">
-            {getSwitch('recordFFXIV', setRecordFFXIV)}
-          </div>
-        </div>
-        {config.recordFFXIV && (
-          <div className="flex flex-col w-1/2">
-            <Label htmlFor="retailPtrLogPath" className="flex items-center">
-              {getLocalePhrase(appState.language, Phrase.FFXIVLogPathLabel)}
-              <Tooltip
-                content={getLocalePhrase(
-                  appState.language,
-                  configSchema.FFXIVLogPath.description,
-                )}
-                side="top"
-              >
-                <Info size={20} className="inline-flex ml-2" />
-              </Tooltip>
-            </Label>
-            <Input
-              value={config.FFXIVLogPath}
-              onClick={setFFXIVLogPath}
-              readOnly
-              required
-            />
-            {config.FFXIVLogPath === '' && (
-              <span className="text-error text-xs font-semibold mt-1">
-                {getLocalePhrase(
-                  appState.language,
-                  Phrase.InvalidFFXIVLogPathText,
-                )}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   return (
     <div className="flex flex-col gap-y-2">
       {getDisabledText()}
@@ -528,7 +438,6 @@ const FlavourSettings: React.FC<IProps> = (props: IProps) => {
       {getClassicSettings()}
       {getEraSettings()}
       {getRetailPtrSettings()}
-      {getFFXIVSettings()}
     </div>
   );
 };

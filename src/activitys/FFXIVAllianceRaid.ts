@@ -9,7 +9,7 @@ import { DungeonTimelineSegment, TimelineSegmentType } from 'main/keystone';
 import { Difficulty } from 'main/FFXIVTypes';
 
 /**
- * Class representing a dungeon encounter.
+ * Class representing an alliance raid encounter.
  */
 export default class FFXIVAllianceRaid extends Activity {
   private _difficulty: Difficulty;
@@ -20,24 +20,14 @@ export default class FFXIVAllianceRaid extends Activity {
 
   private _timeline: DungeonTimelineSegment[] = [];
 
-  private _pull = 1;
-
   constructor(
     startDate: Date,
     encounterName: string,
     difficulty: Difficulty = Difficulty.Normal,
   ) {
-    super(startDate, VideoCategory.FFXIVDungeons);
+    super(startDate, VideoCategory.FFXIVAllianceRaids);
     this._difficulty = difficulty;
     this._encounterName = encounterName;
-  }
-
-  get pull() {
-    return this._pull;
-  }
-
-  set pull(pullNumber: number) {
-    this._pull = pullNumber;
   }
 
   get encounterName() {
@@ -46,7 +36,9 @@ export default class FFXIVAllianceRaid extends Activity {
 
   get resultInfo() {
     if (this.result === undefined) {
-      throw new Error('[FFXIVDungeon] Tried to get result info but no result');
+      throw new Error(
+        '[FFXIVAllianceRaid] Tried to get result info but no result',
+      );
     }
 
     const language = this.cfg.get<string>('language') as Language;
@@ -83,10 +75,8 @@ export default class FFXIVAllianceRaid extends Activity {
       (combatant: Combatant) => combatant.getRaw(),
     );
 
-    const bossPercent = Math.round((100 * this.currentHp) / this.maxHp);
-
     return {
-      category: VideoCategory.FFXIVDungeons,
+      category: VideoCategory.FFXIVAllianceRaids,
       encounterName: this.encounterName,
       difficulty: Difficulty[this.difficulty],
       duration: this.duration,
@@ -96,8 +86,6 @@ export default class FFXIVAllianceRaid extends Activity {
       combatants: rawCombatants,
       start: this.startDate.getTime(),
       uniqueHash: this.getUniqueHash(),
-      bossPercent,
-      pull: this.pull,
     };
   }
 
@@ -109,7 +97,7 @@ export default class FFXIVAllianceRaid extends Activity {
         fileName = `${this.player.name} - ${fileName}`;
       }
     } catch {
-      console.warn('[FFXIVDungeon] Failed to get player combatant');
+      console.warn('[FFXIVAllianceRaid] Failed to get player combatant');
     }
 
     return fileName;
@@ -121,7 +109,7 @@ export default class FFXIVAllianceRaid extends Activity {
 
     if (lastSegment && lastSegment.length() < 10000) {
       console.debug(
-        "[ChallengeModeDungeon] Removing last timeline segment because it's too short.",
+        "[FFXIVAllianceRaid] Removing last timeline segment because it's too short.",
       );
       this.removeLastTimelineSegment();
     }

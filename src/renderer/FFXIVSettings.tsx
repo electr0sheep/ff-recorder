@@ -36,6 +36,9 @@ const FFXIVSettings = (props: IProps) => {
       FFXIVRecordTrials: config.FFXIVRecordTrials,
       FFXIVRecordRaids: config.FFXIVRecordRaids,
       FFXIVRecordAllianceRaids: config.FFXIVRecordAllianceRaids,
+      FFXIVRecordDeepDungeons: config.FFXIVRecordDeepDungeons,
+      FFXIVRecordVariantDungeons: config.FFXIVRecordVariantDungeons,
+      FFXIVRecordCriterionDungeons: config.FFXIVRecordCriterionDungeons
     });
   }, [
     config.recordFFXIV,
@@ -44,6 +47,9 @@ const FFXIVSettings = (props: IProps) => {
     config.FFXIVRecordTrials,
     config.FFXIVRecordRaids,
     config.FFXIVRecordAllianceRaids,
+    config.FFXIVRecordDeepDungeons,
+    config.FFXIVRecordVariantDungeons,
+    config.FFXIVRecordCriterionDungeons,
   ]);
 
   const getSwitch = (
@@ -202,6 +208,33 @@ const FFXIVSettings = (props: IProps) => {
     });
   };
 
+  const setRecordDeepDungeons = (checked: boolean) => {
+    setConfig((prevState) => {
+      return {
+        ...prevState,
+        FFXIVRecordDeepDungeons: checked,
+      };
+    });
+  };
+
+  const setRecordVariantDungeons = (checked: boolean) => {
+    setConfig((prevState) => {
+      return {
+        ...prevState,
+        FFXIVRecordVariantDungeons: checked,
+      };
+    });
+  };
+
+  const setRecordCriterionDungeons = (checked: boolean) => {
+    setConfig((prevState) => {
+      return {
+        ...prevState,
+        FFXIVRecordCriterionDungeons: checked,
+      };
+    });
+  };
+
   return (
     <div className="flex flex-col gap-y-2">
       <div>{getFFXIVSettings()}</div>
@@ -226,6 +259,21 @@ const FFXIVSettings = (props: IProps) => {
           'FFXIVRecordAllianceRaids',
           Phrase.FFXIVRecordAllianceRaids,
           setRecordAllianceRaids,
+        )}
+        {getSwitchForm(
+          'FFXIVRecordDeepDungeons',
+          Phrase.FFXIVRecordDeepDungeons,
+          setRecordDeepDungeons,
+        )}
+        {getSwitchForm(
+          'FFXIVRecordVariantDungeons',
+          Phrase.FFXIVRecordVariantDungeons,
+          setRecordVariantDungeons,
+        )}
+        {getSwitchForm(
+          'FFXIVRecordCriterionDungeons',
+          Phrase.FFXIVRecordCriterionDungeons,
+          setRecordCriterionDungeons,
         )}
       </div>
     </div>

@@ -575,6 +575,15 @@ const useTable = (
     case VideoCategory.FFXIVAllianceRaids:
       columns = FFXIVDungeonColumns;
       break;
+    case VideoCategory.FFXIVDeepDungeons:
+      columns = FFXIVDungeonColumns;
+      break;
+    case VideoCategory.FFXIVVariantDungeons:
+      columns = FFXIVDungeonColumns;
+      break;
+    case VideoCategory.FFXIVCriterionDungeons:
+      columns = FFXIVDungeonColumns;
+      break;
     default:
       throw new Error('Unrecognized category');
   }

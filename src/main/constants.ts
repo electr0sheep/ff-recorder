@@ -113,6 +113,18 @@ const categoryRecordingSettings: Omit<
     allowRecordKey: 'FFXIVRecordAllianceRaids',
     autoUploadKey: 'FFXIVCloudUploadAllianceRaids',
   },
+  [VideoCategory.FFXIVDeepDungeons]: {
+    allowRecordKey: 'FFXIVRecordDeepDungeons',
+    autoUploadKey: 'FFXIVCloudUploadDeepDungeons',
+  },
+  [VideoCategory.FFXIVVariantDungeons]: {
+    allowRecordKey: 'FFXIVRecordVariantDungeons',
+    autoUploadKey: 'FFXIVCloudUploadVariantDungeons',
+  },
+  [VideoCategory.FFXIVCriterionDungeons]: {
+    allowRecordKey: 'FFXIVRecordCriterionDungeons',
+    autoUploadKey: 'FFXIVCloudUploadCriterionDungeons',
+  },
 };
 
 /**

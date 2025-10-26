@@ -468,6 +468,9 @@ enum Phrase {
   FFXIVRecordTrials,
   FFXIVRecordRaids,
   FFXIVRecordAllianceRaids,
+  FFXIVRecordDeepDungeons,
+  FFXIVRecordVariantDungeons,
+  FFXIVRecordCriterionDungeons,
   FFXIVSettingsLabel,
   SettingsPageFFXIVHeader,
   FFXIVLogPathDescription,
@@ -480,6 +483,9 @@ enum Phrase {
   FFXIVRecordTrialsDescription,
   FFXIVRecordRaidsDescription,
   FFXIVRecordAllianceRaidsDescription,
+  FFXIVRecordDeepDungeonsDescription,
+  FFXIVRecordVariantDungeonsDescription,
+  FFXIVRecordCriterionDungeonsDescription,
   FFXIVRecordingsHeading,
   VideoCategoryFFXIVDungeonsLabel,
   FFXIVCloudUploadDungeonsDescription,
@@ -489,6 +495,12 @@ enum Phrase {
   FFXIVCloudUploadRaidsDescription,
   VideoCategoryFFXIVAllianceRaidsLabel,
   FFXIVCloudUploadAllianceRaidsDescription,
+  VideoCategoryFFXIVDeepDungeonsLabel,
+  FFXIVCloudUploadDeepDungeonsDescription,
+  VideoCategoryFFXIVVariantDungeonsLabel,
+  FFXIVCloudUploadVariantDungeonsDescription,
+  VideoCategoryFFXIVCriterionDungeonsLabel,
+  FFXIVCloudUploadCriterionDungeonsDescription,
 }
 
 enum Language {

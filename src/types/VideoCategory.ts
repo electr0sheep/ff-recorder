@@ -13,4 +13,7 @@ export enum VideoCategory {
   FFXIVRaids = 'FFXIVRaids',
   FFXIVDungeons = 'FFXIVDungeons',
   FFXIVAllianceRaids = 'FFXIVAllianceRaids',
+  FFXIVDeepDungeons = 'FFXIVDeepDungeons',
+  FFXIVVariantDungeons = 'FFXIVVariantDungeons',
+  FFXIVCriterionDungeons = 'FFXIVCriterionDungeons',
 }

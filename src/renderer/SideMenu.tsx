@@ -9,12 +9,15 @@ import {
   MonitorCog,
   Sword,
   Swords,
+  TrendingUpDown,
 } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faDungeon,
   faDragon,
   faSkull,
+  faUserNinja,
+  faSpaghettiMonsterFlying,
 } from '@fortawesome/free-solid-svg-icons';
 import {
   AppState,
@@ -254,6 +257,18 @@ const SideMenu = (props: IProps) => {
             <FontAwesomeIcon icon={faDragon} size="xl" />,
           )}
           {renderCategoryTab(VideoCategory.FFXIVAllianceRaids, <Goal />)}
+          {renderCategoryTab(
+            VideoCategory.FFXIVDeepDungeons,
+            <FontAwesomeIcon icon={faUserNinja} size="xl" />,
+          )}
+          {renderCategoryTab(
+            VideoCategory.FFXIVVariantDungeons,
+            <TrendingUpDown />,
+          )}
+          {renderCategoryTab(
+            VideoCategory.FFXIVCriterionDungeons,
+            <FontAwesomeIcon icon={faSpaghettiMonsterFlying} size="xl" />,
+          )}
         </Menu>
       </ScrollArea>
       <Separator className="mb-4" />

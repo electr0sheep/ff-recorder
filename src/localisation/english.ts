@@ -491,6 +491,18 @@ const ENGLISH: Translations = {
   [Phrase.FFXIVRecordAllianceRaidsDescription]: 'Whether the application should record Alliance Raids',
   [Phrase.VideoCategoryFFXIVAllianceRaidsLabel]: 'Alliance Raids',
   [Phrase.FFXIVCloudUploadAllianceRaidsDescription]: 'If alliance raid recordings should be uploaded to the cloud.',
+  [Phrase.FFXIVRecordDeepDungeons]: 'Record Deep Dungeons',
+  [Phrase.FFXIVRecordDeepDungeonsDescription]: 'Whether the application should record Deep Dungeons',
+  [Phrase.VideoCategoryFFXIVDeepDungeonsLabel]: 'Deep Dungeons',
+  [Phrase.FFXIVCloudUploadDeepDungeonsDescription]: 'If deep dungeon recordings should be uploaded to the cloud.',
+  [Phrase.FFXIVRecordVariantDungeons]: 'Record Variant Dungeons',
+  [Phrase.FFXIVRecordVariantDungeonsDescription]: 'Whether the application should record Variant Dungeons',
+  [Phrase.VideoCategoryFFXIVVariantDungeonsLabel]: 'Variant Dungeons',
+  [Phrase.FFXIVCloudUploadVariantDungeonsDescription]: 'If variant dungeon recordings should be uploaded to the cloud.',
+  [Phrase.FFXIVRecordCriterionDungeons]: 'Record Criterion Dungeons',
+  [Phrase.FFXIVRecordCriterionDungeonsDescription]: 'Whether the application should record Criterion Dungeons',
+  [Phrase.VideoCategoryFFXIVCriterionDungeonsLabel]: 'Criterion Dungeons',
+  [Phrase.FFXIVCloudUploadCriterionDungeonsDescription]: 'If criterion dungeons recordings should be uploaded to the cloud.',
   [Phrase.FFXIVRecordingsHeading]: 'FFXIV Recordings',
 };
 

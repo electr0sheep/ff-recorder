@@ -122,6 +122,12 @@ export const getSettings = (): ConfigurationSchema => {
     FFXIVCloudUploadRaids: getConfigValue<boolean>('FFXIVCloudUploadRaids'),
     FFXIVRecordAllianceRaids: getConfigValue<boolean>('FFXIVRecordAllianceRaids'),
     FFXIVCloudUploadAllianceRaids: getConfigValue<boolean>('FFXIVCloudUploadAllianceRaids'),
+    FFXIVRecordDeepDungeons: getConfigValue<boolean>('FFXIVRecordDeepDungeons'),
+    FFXIVCloudUploadDeepDungeons: getConfigValue<boolean>('FFXIVCloudUploadDeepDungeons'),
+    FFXIVRecordVariantDungeons: getConfigValue<boolean>('FFXIVRecordVariantDungeons'),
+    FFXIVCloudUploadVariantDungeons: getConfigValue<boolean>('FFXIVCloudUploadVariantDungeons'),
+    FFXIVRecordCriterionDungeons: getConfigValue<boolean>('FFXIVRecordCriterionDungeons'),
+    FFXIVCloudUploadCriterionDungeons: getConfigValue<boolean>('FFXIVCloudUploadCriterionDungeons'),
     /* eslint-enable prettier/prettier */
   };
 

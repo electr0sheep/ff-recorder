@@ -104,6 +104,12 @@ export type ConfigurationSchema = {
   FFXIVCloudUploadRaids: boolean;
   FFXIVRecordAllianceRaids: boolean;
   FFXIVCloudUploadAllianceRaids: boolean;
+  FFXIVRecordDeepDungeons: boolean;
+  FFXIVCloudUploadDeepDungeons: boolean;
+  FFXIVRecordVariantDungeons: boolean;
+  FFXIVCloudUploadVariantDungeons: boolean;
+  FFXIVRecordCriterionDungeons: boolean;
+  FFXIVCloudUploadCriterionDungeons: boolean;
 };
 
 export type ConfigurationSchemaKey = keyof ConfigurationSchema;
@@ -646,6 +652,36 @@ export const configSchema = {
   },
   FFXIVCloudUploadAllianceRaids: {
     description: Phrase.FFXIVCloudUploadAllianceRaidsDescription,
+    type: 'boolean',
+    default: true,
+  },
+  FFXIVRecordDeepDungeons: {
+    description: Phrase.FFXIVRecordDeepDungeonsDescription,
+    type: 'boolean',
+    default: false,
+  },
+  FFXIVCloudUploadDeepDungeons: {
+    description: Phrase.FFXIVCloudUploadDeepDungeonsDescription,
+    type: 'boolean',
+    default: true,
+  },
+  FFXIVRecordVariantDungeons: {
+    description: Phrase.FFXIVRecordVariantDungeonsDescription,
+    type: 'boolean',
+    default: false,
+  },
+  FFXIVCloudUploadVariantDungeons: {
+    description: Phrase.FFXIVCloudUploadVariantDungeonsDescription,
+    type: 'boolean',
+    default: true,
+  },
+  FFXIVRecordCriterionDungeons: {
+    description: Phrase.FFXIVRecordCriterionDungeonsDescription,
+    type: 'boolean',
+    default: false,
+  },
+  FFXIVCloudUploadCriterionDungeons: {
+    description: Phrase.FFXIVCloudUploadCriterionDungeonsDescription,
     type: 'boolean',
     default: true,
   },

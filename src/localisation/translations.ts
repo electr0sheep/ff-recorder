@@ -47,6 +47,18 @@ const getLocaleCategoryLabel = (
       return getLocalePhrase(lang, Phrase.VideoCategoryFFXIVRaidsLabel);
     case VideoCategory.FFXIVAllianceRaids:
       return getLocalePhrase(lang, Phrase.VideoCategoryFFXIVAllianceRaidsLabel);
+    case VideoCategory.FFXIVDeepDungeons:
+      return getLocalePhrase(lang, Phrase.VideoCategoryFFXIVDeepDungeonsLabel);
+    case VideoCategory.FFXIVVariantDungeons:
+      return getLocalePhrase(
+        lang,
+        Phrase.VideoCategoryFFXIVVariantDungeonsLabel,
+      );
+    case VideoCategory.FFXIVCriterionDungeons:
+      return getLocalePhrase(
+        lang,
+        Phrase.VideoCategoryFFXIVCriterionDungeonsLabel,
+      );
     default:
       throw new Error('Unrecognized category');
   }

@@ -21,6 +21,7 @@ import {
   VideoQueueItem,
   MicStatus,
   WowProcessEvent,
+  FFXIVProcessEvent,
   BaseConfig,
 } from './types';
 import {
@@ -105,7 +106,9 @@ export default class Manager {
 
     this.poller
       .on(WowProcessEvent.STARTED, () => this.onWowStarted())
-      .on(WowProcessEvent.STOPPED, () => this.onWowStopped());
+      .on(WowProcessEvent.STOPPED, () => this.onWowStopped())
+      .on(FFXIVProcessEvent.STARTED, () => this.onFFXIVStarted())
+      .on(FFXIVProcessEvent.STOPPED, () => this.onFFXIVStopped());
   }
 
   /**
@@ -332,31 +335,89 @@ export default class Manager {
 
   /**
    * Called when the WoW process is detected to have exited. Ends any
-   * recording that is still ongoing. We detach audio sources here to
-   * allow Windows to go to sleep with WCR running.
+   * WoW recording that is still ongoing. If FFXIV is still running,
+   * switch the capture source back to it.
    */
   private async onWowStopped() {
     console.info('[Manager] Detected WoW not running');
-    const inActivity =
-      Boolean(LogHandler.activity) || Boolean(FFXIVGenericLogHandler.activity);
 
-    if (inActivity) {
-      console.info('[Manager] Force ending activity');
-      if (LogHandler.activity) {
-        LogHandler.forceEndActivity();
-      } else {
-        FFXIVGenericLogHandler.forceEndActivity();
-      }
-    } else {
-      await this.recorder.forceStop();
+    if (LogHandler.activity) {
+      console.info('[Manager] Force ending WoW activity');
+      LogHandler.forceEndActivity();
     }
 
     this.recorder.clearFindWindowInterval();
 
-    if (!this.audioSettingsOpen) {
-      // Only remove the audio sources if the audio settings window is not open.
-      // We want to keep them attached to show the volmeter bars if it is.
-      this.recorder.removeAudioSources();
+    // If FFXIV is still running, switch capture back to it
+    if (this.poller.isFFXIVRunning()) {
+      console.info('[Manager] FFXIV still running, switching capture back');
+      this.recorder.attachCaptureSource();
+
+      const audioConfig = getObsAudioConfig(this.cfg);
+      this.recorder.configureAudioSources(audioConfig);
+
+      try {
+        await this.recorder.startBuffer();
+      } catch (error) {
+        console.error('[Manager] OBS failed to start buffer for FFXIV', error);
+      }
+    } else {
+      await this.recorder.forceStop();
+
+      if (!this.audioSettingsOpen) {
+        this.recorder.removeAudioSources();
+      }
+    }
+  }
+
+  /**
+   * Called when FFXIV process is detected to have started.
+   * Enables WebSocket reconnection and starts recording if WoW isn't running.
+   */
+  private async onFFXIVStarted() {
+    console.info('[Manager] Detected FFXIV started');
+    if (this.FFXIVLogHandler) {
+      this.FFXIVLogHandler.enableReconnect();
+    }
+
+    // Only start buffer/capture if WoW isn't already running
+    if (!this.poller.isWowRunning()) {
+      this.recorder.attachCaptureSource();
+
+      const audioConfig = getObsAudioConfig(this.cfg);
+      this.recorder.configureAudioSources(audioConfig);
+
+      try {
+        await this.recorder.startBuffer();
+      } catch (error) {
+        console.error('[Manager] OBS failed to start buffer for FFXIV', error);
+      }
+    }
+  }
+
+  /**
+   * Called when FFXIV process is detected to have stopped.
+   * Disables WebSocket reconnection and stops recording if WoW isn't running.
+   */
+  private async onFFXIVStopped() {
+    console.info('[Manager] Detected FFXIV stopped');
+    if (this.FFXIVLogHandler) {
+      this.FFXIVLogHandler.disableReconnect();
+    }
+
+    if (FFXIVGenericLogHandler.activity) {
+      console.info('[Manager] Force ending FFXIV activity');
+      FFXIVGenericLogHandler.forceEndActivity();
+    }
+
+    // Only stop recorder if WoW isn't running
+    if (!this.poller.isWowRunning()) {
+      await this.recorder.forceStop();
+      this.recorder.clearFindWindowInterval();
+
+      if (!this.audioSettingsOpen) {
+        this.recorder.removeAudioSources();
+      }
     }
   }
 
@@ -414,7 +475,11 @@ export default class Manager {
     }
 
     if (config.recordFFXIV) {
-      this.FFXIVLogHandler = new FFXIVLogHandler(config.FFXIVLogPath);
+      this.FFXIVLogHandler = new FFXIVLogHandler(config.FFXIVWebSocketURL);
+      // Enable reconnect if FFXIV is already running
+      if (this.poller.isFFXIVRunning()) {
+        this.FFXIVLogHandler.enableReconnect();
+      }
     }
   }
 

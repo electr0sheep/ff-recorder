@@ -72,10 +72,9 @@ export const MapHeader = (language: Language) => (
   </span>
 );
 
-export const LevelHeader = (language: Language) => (
+export const BossHeader = (language: Language) => (
   <span className="inline-flex gap-x-1">
-    <Swords />
-    {getLocalePhrase(language, Phrase.TableHeaderDifficulty)}
+    {getLocalePhrase(language, Phrase.TableHeaderBoss)}
   </span>
 );
 

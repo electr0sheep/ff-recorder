@@ -25,6 +25,7 @@ enum LogType {
   RAID_MARKER = '28',
   TARGET_MARKER = '29',
   BUFF_REMOVE = '30',
+  UPDATE_HP = '39',
   // TARGET_CHANGE = '37',
   DEBUG = '251',
   PACKET_DUMP = '252',
@@ -140,4 +141,21 @@ type Zone = {
   difficulty?: Difficulty;
 };
 
-export { LogType, Job, Difficulty, Expansion, ContentType, Zone };
+type FFXIVGameState = {
+  inCombat: boolean;
+  zoneId: number | null;
+  zoneName: string | null;
+  inContentFinderContent: boolean;
+  timestamp: Date | null;
+  playerId: string | null;
+};
+
+export {
+  LogType,
+  Job,
+  Difficulty,
+  Expansion,
+  ContentType,
+  Zone,
+  FFXIVGameState,
+};

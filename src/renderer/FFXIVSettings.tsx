@@ -9,13 +9,14 @@ import { Phrase } from 'localisation/phrases';
 import { Tooltip } from './components/Tooltip/Tooltip';
 import { Info } from 'lucide-react';
 import { Input } from './components/Input/Input';
-import { pathSelect } from './rendererutils';
 import Separator from './components/Separator/Separator';
 
 interface IProps {
   recorderStatus: RecStatus;
   appState: AppState;
 }
+
+const ipc = window.electron.ipcRenderer;
 
 const FFXIVSettings = (props: IProps) => {
   const { recorderStatus, appState } = props;
@@ -31,18 +32,20 @@ const FFXIVSettings = (props: IProps) => {
 
     setConfigValues({
       recordFFXIV: config.recordFFXIV,
-      FFXIVLogPath: config.FFXIVLogPath,
+      FFXIVWebSocketURL: config.FFXIVWebSocketURL,
       FFXIVRecordDungeons: config.FFXIVRecordDungeons,
       FFXIVRecordTrials: config.FFXIVRecordTrials,
       FFXIVRecordRaids: config.FFXIVRecordRaids,
       FFXIVRecordAllianceRaids: config.FFXIVRecordAllianceRaids,
       FFXIVRecordDeepDungeons: config.FFXIVRecordDeepDungeons,
       FFXIVRecordVariantDungeons: config.FFXIVRecordVariantDungeons,
-      FFXIVRecordCriterionDungeons: config.FFXIVRecordCriterionDungeons
+      FFXIVRecordCriterionDungeons: config.FFXIVRecordCriterionDungeons,
     });
+
+    ipc.reconfigureBase();
   }, [
     config.recordFFXIV,
-    config.FFXIVLogPath,
+    config.FFXIVWebSocketURL,
     config.FFXIVRecordDungeons,
     config.FFXIVRecordTrials,
     config.FFXIVRecordRaids,
@@ -112,12 +115,15 @@ const FFXIVSettings = (props: IProps) => {
         </div>
         {config.recordFFXIV && (
           <div className="flex flex-col w-1/2">
-            <Label htmlFor="retailPtrLogPath" className="flex items-center">
-              {getLocalePhrase(appState.language, Phrase.FFXIVLogPathLabel)}
+            <Label htmlFor="FFXIVWebSocketURL" className="flex items-center">
+              {getLocalePhrase(
+                appState.language,
+                Phrase.FFXIVWebSocketURLLabel,
+              )}
               <Tooltip
                 content={getLocalePhrase(
                   appState.language,
-                  configSchema.FFXIVLogPath.description,
+                  configSchema.FFXIVWebSocketURL.description,
                 )}
                 side="top"
               >
@@ -125,19 +131,10 @@ const FFXIVSettings = (props: IProps) => {
               </Tooltip>
             </Label>
             <Input
-              value={config.FFXIVLogPath}
-              onClick={setFFXIVLogPath}
-              readOnly
-              required
+              value={config.FFXIVWebSocketURL}
+              onChange={(e) => setFFXIVWebSocketURL(e.target.value)}
+              placeholder="ws://127.0.0.1:10501/ws"
             />
-            {config.FFXIVLogPath === '' && (
-              <span className="text-error text-xs font-semibold mt-1">
-                {getLocalePhrase(
-                  appState.language,
-                  Phrase.InvalidFFXIVLogPathText,
-                )}
-              </span>
-            )}
           </div>
         )}
       </div>
@@ -153,21 +150,11 @@ const FFXIVSettings = (props: IProps) => {
     });
   };
 
-  const setFFXIVLogPath = async () => {
-    if (isComponentDisabled()) {
-      return;
-    }
-
-    const newPath = await pathSelect();
-
-    if (newPath === '') {
-      return;
-    }
-
+  const setFFXIVWebSocketURL = (url: string) => {
     setConfig((prevState) => {
       return {
         ...prevState,
-        FFXIVLogPath: newPath,
+        FFXIVWebSocketURL: url,
       };
     });
   };

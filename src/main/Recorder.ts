@@ -1423,7 +1423,16 @@ export default class Recorder extends EventEmitter {
   /**
    * Check if the name of the window matches one of the known WoW window names.
    */
-  private static windowMatch(item: { name: string; value: string | number }) {
+  private static windowMatch(item: {
+    name: string;
+    value: string | number;
+    disabled?: boolean;
+  }) {
+    // Skip disabled windows (process has closed but window entry lingers)
+    if (item.disabled) {
+      return false;
+    }
+
     return (
       item.name.startsWith('[Wow.exe]: ') ||
       item.name.startsWith('[WowT.exe]: ') ||

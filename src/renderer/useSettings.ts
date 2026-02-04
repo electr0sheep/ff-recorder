@@ -113,7 +113,7 @@ export const getSettings = (): ConfigurationSchema => {
     manualRecordUpload: getConfigValue<boolean>('manualRecordUpload'),
     firstTimeSetup: getConfigValue<boolean>('firstTimeSetup'),
     recordFFXIV: getConfigValue<boolean>('recordFFXIV'),
-    FFXIVLogPath: getConfigValue<string>('FFXIVLogPath'),
+    FFXIVWebSocketURL: getConfigValue<string>('FFXIVWebSocketURL'),
     FFXIVRecordDungeons: getConfigValue<boolean>('FFXIVRecordDungeons'),
     FFXIVCloudUploadDungeons: getConfigValue<boolean>('FFXIVCloudUploadDungeons'),
     FFXIVRecordTrials: getConfigValue<boolean>('FFXIVRecordTrials'),

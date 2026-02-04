@@ -14,6 +14,7 @@ import {
   videoToDate,
   getDungeonName,
   getFFXIVDungeonName,
+  getFFXIVDungeonBossName,
   getFFXIVPullNumber,
 } from 'renderer/rendererutils';
 import { VideoCategory } from 'types/VideoCategory';
@@ -25,10 +26,11 @@ import {
   populateViewpointCell,
   populateDetailsCell,
   populateMapCell,
+  populateDungeonBossCell,
   populateLevelCell,
   populateActivityCell,
   populateAffixesCell,
-  populateFFXIVLevelCell,
+  populateFFXIVDifficultyCell,
 } from './Cells';
 import {
   EncounterHeader,
@@ -39,7 +41,7 @@ import {
   DateHeader,
   ViewpointsHeader,
   MapHeader,
-  LevelHeader,
+  BossHeader,
   TypeHeader,
   ActivityHeader,
   DetailsHeader,
@@ -238,7 +240,7 @@ const useTable = (
         id: 'Level',
         accessorFn: (v) => v,
         sortingFn: levelSort,
-        header: () => LevelHeader(language),
+        header: () => DifficultyHeader(language),
         cell: populateLevelCell,
       },
       {
@@ -444,11 +446,142 @@ const useTable = (
         cell: (c) => populateResultCell(c, language),
       },
       {
-        id: 'Level',
+        id: 'Difficulty',
         accessorFn: (v) => v,
         sortingFn: levelSort,
-        header: () => LevelHeader(language),
-        cell: populateFFXIVLevelCell,
+        header: () => DifficultyHeader(language),
+        cell: populateFFXIVDifficultyCell,
+      },
+      {
+        id: 'Duration',
+        accessorFn: (v) => v,
+        sortingFn: durationSort,
+        header: () => DurationHeader(language),
+        cell: populateDurationCell,
+      },
+      {
+        id: 'Date',
+        accessorFn: (v) => videoToDate(v),
+        header: () => DateHeader(language),
+        cell: populateDateCell,
+      },
+      {
+        id: 'Viewpoints',
+        accessorFn: (v) => v,
+        header: () => ViewpointsHeader(language),
+        cell: populateViewpointCell,
+        sortingFn: viewPointCountSort,
+      },
+    ],
+    [appState, setVideoState],
+  );
+
+  const FFXIVAllianceRaidColumns = useMemo<ColumnDef<RendererVideo>[]>(
+    () => [
+      {
+        id: 'Details',
+        size: 80,
+        accessorFn: (v) => v,
+        sortingFn: (a, b) => detailSort(a, b),
+        header: DetailsHeader,
+        cell: (ctx) =>
+          populateDetailsCell(ctx, language, cloudStatus, setVideoState),
+      },
+      {
+        id: 'Map',
+        size: 200,
+        accessorFn: getFFXIVDungeonName,
+        header: () => MapHeader(language),
+        cell: populateMapCell,
+      },
+      {
+        id: 'Boss',
+        size: 200,
+        accessorFn: getFFXIVDungeonBossName,
+        header: () => BossHeader(language),
+        cell: populateDungeonBossCell,
+      },
+      {
+        id: 'Result',
+        accessorFn: (v) => v,
+        sortingFn: (a, b) => resultSort(a, b, language),
+        header: () => ResultHeader(language),
+        cell: (c) => populateResultCell(c, language),
+      },
+      {
+        id: 'Difficulty',
+        accessorFn: (v) => v,
+        sortingFn: levelSort,
+        header: () => DifficultyHeader(language),
+        cell: populateFFXIVDifficultyCell,
+      },
+      {
+        id: 'Duration',
+        accessorFn: (v) => v,
+        sortingFn: durationSort,
+        header: () => DurationHeader(language),
+        cell: populateDurationCell,
+      },
+      {
+        id: 'Date',
+        accessorFn: (v) => videoToDate(v),
+        header: () => DateHeader(language),
+        cell: populateDateCell,
+      },
+      {
+        id: 'Viewpoints',
+        accessorFn: (v) => v,
+        header: () => ViewpointsHeader(language),
+        cell: populateViewpointCell,
+        sortingFn: viewPointCountSort,
+      },
+    ],
+    [appState, setVideoState],
+  );
+
+  const FFXIVCriterionDungeonColumns = useMemo<ColumnDef<RendererVideo>[]>(
+    () => [
+      {
+        id: 'Details',
+        size: 80,
+        accessorFn: (v) => v,
+        sortingFn: (a, b) => detailSort(a, b),
+        header: DetailsHeader,
+        cell: (ctx) =>
+          populateDetailsCell(ctx, language, cloudStatus, setVideoState),
+      },
+      {
+        id: 'Map',
+        size: 200,
+        accessorFn: getFFXIVDungeonName,
+        header: () => MapHeader(language),
+        cell: populateMapCell,
+      },
+      {
+        id: 'Boss',
+        size: 200,
+        accessorFn: getFFXIVDungeonBossName,
+        header: () => BossHeader(language),
+        cell: populateDungeonBossCell,
+      },
+      {
+        id: 'Result',
+        accessorFn: (v) => v,
+        sortingFn: (a, b) => resultSort(a, b, language),
+        header: () => ResultHeader(language),
+        cell: (c) => populateResultCell(c, language),
+      },
+      {
+        id: 'Pull',
+        accessorFn: (v) => getFFXIVPullNumber(v),
+        header: () => PullHeader(language),
+      },
+      {
+        id: 'Difficulty',
+        accessorFn: (v) => v,
+        sortingFn: levelSort,
+        header: () => DifficultyHeader(language),
+        cell: populateFFXIVDifficultyCell,
       },
       {
         id: 'Duration',
@@ -573,16 +706,16 @@ const useTable = (
       columns = FFXIVRaidColumns;
       break;
     case VideoCategory.FFXIVAllianceRaids:
-      columns = FFXIVDungeonColumns;
+      columns = FFXIVAllianceRaidColumns;
       break;
     case VideoCategory.FFXIVDeepDungeons:
       columns = FFXIVDungeonColumns;
       break;
     case VideoCategory.FFXIVVariantDungeons:
-      columns = FFXIVDungeonColumns;
+      columns = FFXIVCriterionDungeonColumns;
       break;
     case VideoCategory.FFXIVCriterionDungeons:
-      columns = FFXIVDungeonColumns;
+      columns = FFXIVCriterionDungeonColumns;
       break;
     default:
       throw new Error('Unrecognized category');

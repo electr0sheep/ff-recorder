@@ -20,15 +20,19 @@ export default class FFXIVDungeon extends Activity {
 
   private _timeline: DungeonTimelineSegment[] = [];
 
+  public _category: VideoCategory;
+
   constructor(
     startDate: Date,
     encounterName: string,
     difficulty: Difficulty = Difficulty.Normal,
+    category: VideoCategory,
   ) {
-    super(startDate, VideoCategory.FFXIVDungeons);
+    super(startDate, category);
     this._difficulty = difficulty;
     this._encounterName = encounterName;
     this.overrun = 3;
+    this._category = category;
   }
 
   get encounterName() {
@@ -79,7 +83,7 @@ export default class FFXIVDungeon extends Activity {
     );
 
     return {
-      category: VideoCategory.FFXIVDungeons,
+      category: this.category,
       encounterName: this.encounterName,
       difficulty: Difficulty[this.difficulty],
       duration: this.duration,

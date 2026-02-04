@@ -53,9 +53,9 @@ export default abstract class FFXIVGenericLogHandler {
 
   private static stateChangeCallback: () => void;
 
-  constructor(logPath: string, dataTimeout: number) {
+  constructor(wsUrl: string, dataTimeout: number) {
     console.debug('[FFXIVGenericLogHandler] Starting');
-    this.combatLogWatcher = new FFXIVCombatLogWatcher(logPath, dataTimeout);
+    this.combatLogWatcher = new FFXIVCombatLogWatcher(wsUrl, dataTimeout);
     this.combatLogWatcher.watch();
 
     this.combatLogWatcher.on('timeout', (ms: number) => {
@@ -77,6 +77,20 @@ export default abstract class FFXIVGenericLogHandler {
   public destroy() {
     this.combatLogWatcher.unwatch();
     this.combatLogWatcher.removeAllListeners();
+  }
+
+  /**
+   * Enable WebSocket reconnection (called when FFXIV starts).
+   */
+  public enableReconnect() {
+    this.combatLogWatcher.enableReconnect();
+  }
+
+  /**
+   * Disable WebSocket reconnection (called when FFXIV stops).
+   */
+  public disableReconnect() {
+    this.combatLogWatcher.disableReconnect();
   }
 
   protected static async startActivity(activity: Activity, offset: number = 0) {
@@ -157,9 +171,9 @@ export default abstract class FFXIVGenericLogHandler {
     let videoFile;
 
     const stopPromise = recorder.stop(); // Queue the stop.
-    const wowRunning = poller.isWowRunning();
+    const ffxivRunning = poller.isFFXIVRunning();
 
-    if (wowRunning) {
+    if (ffxivRunning) {
       // Immediately queue the buffer start so it's ready if we go instantly into another activity.
       console.info(
         '[FFXIVGenericLogHandler] Queue buffer start as FFXIV still running',

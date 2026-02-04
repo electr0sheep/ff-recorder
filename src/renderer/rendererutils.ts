@@ -47,10 +47,6 @@ import { getLocalePhrase, Language } from 'localisation/translations';
 import { Phrase } from 'localisation/phrases';
 import { Job } from 'main/FFXIVTypes';
 
-const getVideoResult = (video: RendererVideo): boolean => {
-  return video.result;
-};
-
 /**
  * Returns a string of the form MM:SS.
  */
@@ -91,7 +87,7 @@ const getOwnDeathMarkers = (video: RendererVideo, language: Language) => {
     markerText += ` (${name})`;
     let color: string;
 
-    if (death.friendly) {
+    if (death.friendly !== false) {
       color = MarkerColors.LOSS;
     } else {
       color = MarkerColors.WIN;
@@ -158,7 +154,7 @@ const getAllDeathMarkers = (video: RendererVideo, language: Language) => {
     markerText += ` (${name})`;
     let color: string;
 
-    if (death.friendly) {
+    if (death.friendly !== false) {
       color = MarkerColors.LOSS;
     } else {
       color = MarkerColors.WIN;
@@ -177,7 +173,7 @@ const getAllDeathMarkers = (video: RendererVideo, language: Language) => {
     markerText += ` (multiple)`;
     let color: string;
 
-    if (death.friendly) {
+    if (death.friendly !== false) {
       color = MarkerColors.LOSS;
     } else {
       color = MarkerColors.WIN;
@@ -386,6 +382,10 @@ const getDungeonName = (video: RendererVideo) => {
 const getFFXIVDungeonName = (video: RendererVideo) => {
   return video.encounterName;
 };
+
+const getFFXIVDungeonBossName = (video: RendererVideo) => {
+  return video.bossName;
+}
 
 const isMythicPlusUtil = (video: RendererVideo) => {
   const { category, parentCategory } = video;
@@ -1185,7 +1185,6 @@ const videoMatchName = (a: RendererVideo, name: string) => a.videoName === name;
 
 export {
   getFormattedDuration,
-  getVideoResult,
   getWoWClassColor,
   getFFXIVJobColor,
   getVideoResultText,
@@ -1249,6 +1248,7 @@ export {
   videoMatch,
   videoMatchName,
   getFFXIVDungeonName,
+  getFFXIVDungeonBossName,
   getFFXIVPullNumber,
   isFFXIVDungeon,
 };

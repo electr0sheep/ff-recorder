@@ -131,7 +131,7 @@ export default class RaidEncounter extends Activity {
       zoneName: this.raid.shortName,
       flavour: this.flavour,
       encounterID: this.encounterID,
-      encounterName: this.encounterName,
+      bossName: this.encounterName,
       difficultyID: this.difficultyID,
       difficulty: this.difficulty.difficulty,
       duration: this.duration,

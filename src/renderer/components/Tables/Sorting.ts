@@ -103,8 +103,8 @@ export const clipActivitySort = (
   let activityA = getLocalePhrase(language, Phrase.Unknown);
   const rvA = a.original;
 
-  if (isRaidUtil(rvA) && rvA.encounterName) {
-    activityA = rvA.encounterName;
+  if (isRaidUtil(rvA) && rvA.bossName) {
+    activityA = rvA.bossName;
   } else if (isMythicPlusUtil(rvA) && rvA.mapID) {
     activityA = getDungeonName(rvA);
   } else if (rvA.zoneName) {
@@ -114,8 +114,8 @@ export const clipActivitySort = (
   let activityB = getLocalePhrase(language, Phrase.Unknown);
   const rvB = b.original;
 
-  if (isRaidUtil(rvB) && rvB.encounterName) {
-    activityB = rvB.encounterName;
+  if (isRaidUtil(rvB) && rvB.bossName) {
+    activityB = rvB.bossName;
   } else if (isMythicPlusUtil(rvB) && rvB.mapID) {
     activityB = getDungeonName(rvB);
   } else if (rvB.zoneName) {

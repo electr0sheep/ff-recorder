@@ -95,7 +95,7 @@ export type ConfigurationSchema = {
   manualRecordUpload: boolean;
   firstTimeSetup: boolean;
   recordFFXIV: boolean;
-  FFXIVLogPath: string;
+  FFXIVWebSocketURL: string;
   FFXIVRecordDungeons: boolean;
   FFXIVCloudUploadDungeons: boolean;
   FFXIVRecordTrials: boolean;
@@ -610,10 +610,10 @@ export const configSchema = {
     type: 'boolean',
     default: false,
   },
-  FFXIVLogPath: {
-    description: Phrase.FFXIVLogPathDescription,
+  FFXIVWebSocketURL: {
+    description: Phrase.FFXIVWebSocketURLDescription,
     type: 'string',
-    default: '',
+    default: 'ws://127.0.0.1:10501/ws',
   },
   FFXIVRecordDungeons: {
     description: Phrase.FFXIVRecordDungeonsDescription,

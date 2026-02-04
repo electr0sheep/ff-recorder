@@ -333,13 +333,8 @@ export default class VideoFilter {
       suggestions.push(tag);
     }
 
-    if (video.encounterName) {
-      const tag = new VideoTag(
-        205,
-        video.encounterName,
-        '<DragonIcon>',
-        '#bb4420',
-      );
+    if (video.bossName) {
+      const tag = new VideoTag(205, video.bossName, '<DragonIcon>', '#bb4420');
 
       suggestions.push(tag);
     }

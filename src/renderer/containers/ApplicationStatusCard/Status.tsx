@@ -220,7 +220,7 @@ const Status = ({
                 {getLocalePhrase(language, Phrase.FFXIV)}
                 {': '}
               </span>
-              <code>{config.FFXIVLogPath}</code>
+              <code>{config.FFXIVWebSocketURL}</code>
             </li>
           )}
         </ul>

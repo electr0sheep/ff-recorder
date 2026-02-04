@@ -3,7 +3,7 @@ import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import path from 'path';
 import { app } from 'electron';
 import ConfigService from 'config/ConfigService';
-import { WowProcessEvent } from 'main/types';
+import { WowProcessEvent, FFXIVProcessEvent } from 'main/types';
 
 /**
  * The Poller singleton periodically checks the list of WoW active
@@ -25,6 +25,11 @@ export default class Poller extends EventEmitter {
    * enabled. Includes various flavours of retail, classic and era.
    */
   private wowRunning = false;
+
+  /**
+   * If FFXIV is running AND the recordFFXIV config is enabled.
+   */
+  private ffxivRunning = false;
 
   /**
    * Spawned child process.
@@ -59,6 +64,13 @@ export default class Poller extends EventEmitter {
    */
   public isWowRunning() {
     return this.wowRunning;
+  }
+
+  /**
+   * Check if FFXIV is currently running.
+   */
+  public isFFXIVRunning() {
+    return this.ffxivRunning;
   }
 
   /**
@@ -113,24 +125,31 @@ export default class Poller extends EventEmitter {
     const recordEra = this.cfg.get<boolean>('recordEra');
     const recordFFXIV = this.cfg.get<boolean>('recordFFXIV');
 
-    const running =
+    const wowRunning =
       (recordRetail && Retail) ||
       (recordClassic && Classic) ||
-      (recordEra && Classic) || // Era and Classic clients share a process name.
-      (recordFFXIV && FFXIV);
+      (recordEra && Classic); // Era and Classic clients share a process name.
 
-    if (this.wowRunning === running) {
-      // Nothing to emit.
-      return;
+    const ffxivRunning = recordFFXIV && FFXIV;
+
+    // Emit FFXIV-specific events for WebSocket connection management
+    if (this.ffxivRunning !== ffxivRunning) {
+      if (ffxivRunning) {
+        this.emit(FFXIVProcessEvent.STARTED);
+      } else {
+        this.emit(FFXIVProcessEvent.STOPPED);
+      }
+      this.ffxivRunning = ffxivRunning;
     }
 
-    if (running) {
-      this.emit(WowProcessEvent.STARTED);
-    } else {
-      this.emit(WowProcessEvent.STOPPED);
+    if (this.wowRunning !== wowRunning) {
+      if (wowRunning) {
+        this.emit(WowProcessEvent.STARTED);
+      } else {
+        this.emit(WowProcessEvent.STOPPED);
+      }
+      this.wowRunning = wowRunning;
     }
-
-    this.wowRunning = running;
   };
 
   /**

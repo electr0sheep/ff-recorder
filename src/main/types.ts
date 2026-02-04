@@ -92,10 +92,9 @@ enum UnitFlags {
 type PlayerDeathType = {
   name: string;
   specId?: number;
-  job?: string;
-  date: Date;
+  date?: Date;
   timestamp: number;
-  friendly: boolean;
+  friendly?: boolean;
 };
 
 /**
@@ -208,6 +207,7 @@ type Metadata = {
   delete?: boolean; // signals video should be deleted when possible
   uniqueHash?: string; // used for cloud video grouping
   bossPercent?: number;
+  bossName?: string;
   pull?: number;
 };
 
@@ -386,7 +386,7 @@ type BaseConfig = {
   recordRetailPtr: boolean;
   retailPtrLogPath: string;
   recordFFXIV: boolean;
-  FFXIVLogPath: string;
+  FFXIVWebSocketURL: string;
 };
 
 type ObsVideoConfig = {
@@ -617,6 +617,11 @@ enum WowProcessEvent {
   STOPPED = 'wowProcessStop',
 }
 
+enum FFXIVProcessEvent {
+  STARTED = 'ffxivProcessStart',
+  STOPPED = 'ffxivProcessStop',
+}
+
 enum SoundAlerts {
   MANUAL_RECORDING_ERROR = 'manual-recording-error',
   MANUAL_RECORDING_START = 'manual-recording-start',
@@ -682,5 +687,6 @@ export {
   SceneInteraction,
   BoxDimensions,
   WowProcessEvent,
+  FFXIVProcessEvent,
   SoundAlerts,
 };

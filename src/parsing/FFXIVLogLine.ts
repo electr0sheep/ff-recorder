@@ -55,6 +55,15 @@ export default class FFXIVLogLine {
     return this._args[index];
   }
 
+  namedArg(key: string): string {
+    const argIndex = this._args.findIndex((arg) => arg === key);
+    if (argIndex === -1 || argIndex >= this._argsListLen) {
+      return '';
+    } else {
+      return this._args[argIndex + 1];
+    }
+  }
+
   /**
    * Parse the timestamp from a log line and create a Date object from it.
    */
@@ -111,7 +120,7 @@ export default class FFXIVLogLine {
    * @param maxSplits Maximum number of elements to find (same as `limit` for `string.split()` )
    */
   private parseLogArg(maxSplits?: number): void {
-    // Array of items that has been parsedin the current scope of the parsing.
+    // Array of items that has been parsed in the current scope of the parsing.
     //
     // This can end up being multidimensional in the case of some combat events
     // that have complex data stored, like `COMBATANT_INFO`.

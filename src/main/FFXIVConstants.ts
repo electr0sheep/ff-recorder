@@ -3545,6 +3545,30 @@ const zones: Zone[] = [
     type: ContentType['Deep Dungeon'],
     difficulty: Difficulty.Normal,
   },
+  {
+    id: 1314,
+    rawName: 'Mistwake',
+    name: 'Mistwake',
+    expansion: Expansion.Dawntrail,
+    type: ContentType.Dungeon,
+    difficulty: Difficulty.Normal,
+  },
+  {
+    id: 1307,
+    rawName: 'Hell on Rails',
+    name: 'Hell on Rails',
+    expansion: Expansion.Dawntrail,
+    type: ContentType.Trial,
+    difficulty: Difficulty.Normal,
+  },
+  {
+    id: 1308,
+    rawName: 'Hell on Rails',
+    name: 'Hell on Rails (Extreme)',
+    expansion: Expansion.Dawntrail,
+    type: ContentType.Trial,
+    difficulty: Difficulty.Extreme,
+  },
 ];
 
 // we don't want raid/trial bosses here. Only bosses that might have segments
@@ -4236,6 +4260,9 @@ const BNpcBaseIdToNameMap = new Map<number, string>([
   [18575, 'Chirurgeon General'],
   [18576, 'Hooded Headsmen'], // this is for "Bloddy Headsman"
   [18622, 'Memory Meld: The Immortal Remains'],
+  [14270, 'Treno Catoblepas'],
+  [14271, 'Amddusias'],
+  [14288, 'Survivor of Storms: Thundergust Griffin'],
   // Alliance Raids
   [1234567890, 'Bone Dragon'],
   [1234567890, 'Thanatos'],
@@ -4305,6 +4332,22 @@ const BNpcBaseIdToNameMap = new Map<number, string>([
   [18713, 'Ultima, the Feared and Omega, the One'], // this is also wrong
   [18681, "Kam'lanaut"], // need to check
   [17935, "Legacy of the Zilart: Eald'narche"],
+  // Variant Dungeons
+  [11442, 'Geryon the Steer'],
+  [11419, 'Thorne Knight'],
+  [11369, 'Silkie'],
+  [11387, "Gladiator of Sil'dih"],
+  [11393, 'Shadowcaster Zeless Gah'],
+  [12325, 'Yozakura the Fleeting'],
+  [12428, 'Shishio'],
+  [12373, 'Gorai the Uncaged'],
+  [12357, 'Moko the Restless'],
+  [12393, 'Tsukumogami'],
+  [12605, 'Ketuduke'],
+  [12639, 'Lala'],
+  [12506, 'Statice'],
+  [12527, 'Quaqua'],
+  [12636, 'Loquloqui'],
 ]);
 
 export { zones, BNpcNameIdToNameMap, BNpcBaseIdToNameMap };

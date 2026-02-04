@@ -8,12 +8,14 @@ import { Phrase } from 'localisation/phrases';
 import { Difficulty } from 'main/FFXIVTypes';
 
 /**
- * Class representing a trial encounter.
+ * Class representing a raid encounter.
  */
-export default class FFXIVTrial extends Activity {
+export default class FFXIVBossEncounter extends Activity {
   private _difficulty: Difficulty;
 
-  private _encounterName: string;
+  private _mapName: string;
+
+  private _bossName: string;
 
   private currentHp = 1;
 
@@ -21,14 +23,20 @@ export default class FFXIVTrial extends Activity {
 
   private _pull = 1;
 
+  private _videoCategory: VideoCategory;
+
   constructor(
     startDate: Date,
-    encounterName: string,
-    difficulty: Difficulty = Difficulty.Normal,
+    mapName: string,
+    bossName: string,
+    difficulty: Difficulty,
+    videoCategory: VideoCategory,
   ) {
-    super(startDate, VideoCategory.FFXIVTrials);
+    super(startDate, videoCategory);
+    this._videoCategory = videoCategory;
     this._difficulty = difficulty;
-    this._encounterName = encounterName;
+    this._mapName = mapName;
+    this._bossName = bossName;
     this.overrun = 3; // Even for wipes it's nice to have some overrun.
   }
 
@@ -40,13 +48,19 @@ export default class FFXIVTrial extends Activity {
     this._pull = pullNumber;
   }
 
-  get encounterName() {
-    return this._encounterName;
+  get mapName() {
+    return this._mapName;
+  }
+
+  get bossName() {
+    return this._bossName;
   }
 
   get resultInfo() {
     if (this.result === undefined) {
-      throw new Error('[FFXIVTrial] Tried to get result info but no result');
+      throw new Error(
+        '[FFXIVBossEncounter] Tried to get result info but no result',
+      );
     }
 
     const language = this.cfg.get<string>('language') as Language;
@@ -70,9 +84,9 @@ export default class FFXIVTrial extends Activity {
     const bossPercent = Math.round((100 * this.currentHp) / this.maxHp);
 
     return {
-      category: VideoCategory.FFXIVTrials,
-      encounterName: this.encounterName,
-      zoneID: this.zoneID,
+      category: this._videoCategory,
+      encounterName: this.mapName,
+      bossName: this.bossName,
       difficulty: Difficulty[this.difficulty],
       duration: this.duration,
       result: this.result,
@@ -88,14 +102,14 @@ export default class FFXIVTrial extends Activity {
   }
 
   getFileName(): string {
-    let fileName = `${this.encounterName} (${Difficulty[this.difficulty]}) [${this.pull}] (${this.resultInfo})`;
+    let fileName = `${this.bossName} (${Difficulty[this.difficulty]}) [${this.pull}] (${this.resultInfo})`;
 
     try {
       if (this.player.name !== undefined) {
         fileName = `${this.player.name} - ${fileName}`;
       }
     } catch {
-      console.warn('[FFXIVTrial] Failed to get player combatant');
+      console.warn('[FFXIVBossEncounter] Failed to get player combatant');
     }
 
     return fileName;

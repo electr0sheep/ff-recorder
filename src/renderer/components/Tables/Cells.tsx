@@ -71,6 +71,11 @@ export const populateMapCell = (info: CellContext<RendererVideo, unknown>) => {
   return <div className="truncate">{map}</div>;
 };
 
+export const populateDungeonBossCell = (info: CellContext<RendererVideo, unknown>) => {
+  const boss = info.getValue() as string;
+  return <div className="truncate">{boss}</div>;
+};
+
 export const populateDateCell = (info: CellContext<RendererVideo, unknown>) => {
   const date = info.getValue() as Date;
   return <div className="truncate">{dateToHumanReadable(date)}</div>;
@@ -83,8 +88,8 @@ export const populateActivityCell = (
   const video = info.getValue() as RendererVideo;
   let activity = getLocalePhrase(language, Phrase.Unknown);
 
-  if (isRaidUtil(video) && video.encounterName) {
-    activity = video.encounterName;
+  if (isRaidUtil(video) && video.bossName) {
+    activity = video.bossName;
   } else if (isMythicPlusUtil(video) && video.mapID) {
     const dungeonName = getDungeonName(video);
     if (dungeonName) activity = dungeonName;
@@ -227,7 +232,7 @@ export const populateLevelCell = (
   return `+${video.keystoneLevel || video.level || 0}`;
 };
 
-export const populateFFXIVLevelCell = (
+export const populateFFXIVDifficultyCell = (
   info: CellContext<RendererVideo, unknown>,
 ) => {
   const video = info.getValue() as RendererVideo;

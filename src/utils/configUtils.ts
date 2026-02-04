@@ -201,7 +201,7 @@ const getBaseConfig = (cfg: ConfigService): BaseConfig => {
     eraLogPath: cfg.get<string>('eraLogPath'),
     retailPtrLogPath: cfg.get<string>('retailPtrLogPath'),
     recordFFXIV: cfg.get<boolean>('recordFFXIV'),
-    FFXIVLogPath: cfg.get<string>('FFXIVLogPath'),
+    FFXIVWebSocketURL: cfg.get<string>('FFXIVWebSocketURL'),
   };
 };
 

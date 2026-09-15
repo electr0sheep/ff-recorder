@@ -66,6 +66,13 @@ type BossActor = {
 const COMBAT_END_GRACE_MS = 5000;
 
 /**
+ * How long to wait after a Cactbot zone event for IINACT's 265 line, which
+ * carries the zone ID. During normal play it follows within a few hundred
+ * milliseconds; if it never comes we connected mid-duty.
+ */
+const CACTBOT_ZONE_GRACE_MS = 2000;
+
+/**
  * FFXIVLogHandler class. Turns the IINACT log stream into activities.
  */
 export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
@@ -95,6 +102,9 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
 
   /** Last combat state reported by Cactbot, used for recovery on connect. */
   private cactbotInCombat = false;
+
+  /** A Cactbot zone match waiting to see if the 265 line turns up first. */
+  private pendingCactbotZone: NodeJS.Timeout | undefined;
 
   /** Every boss name we know, for matching deaths of actors we never saw spawn. */
   private static bossNames = new Set(Array.from(BNpcNameIdToNameMap.values()));
@@ -151,6 +161,7 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
 
   public destroy() {
     this.clearPendingEnd();
+    this.clearPendingCactbotZone();
     super.destroy();
   }
 
@@ -180,6 +191,9 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
    * Anything not in the zone table is treated as leaving duty content.
    */
   private async handleContentFinderSettings(line: FFXIVLogLine) {
+    // This line is authoritative, so a Cactbot match waiting on it can go.
+    this.clearPendingCactbotZone();
+
     const parsed = new ContentFinderSettingsLine(line);
     const territory = zones.find((zone) => zone.id === parsed.zoneId);
 
@@ -202,29 +216,54 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
    * zone yet, i.e. we connected while a duty was in progress.
    */
   private async handleCactbotZoneChange(zoneName: string) {
+    // Any zone change supersedes a match still waiting on its 265 line.
+    this.clearPendingCactbotZone();
+
     if (this.currentZone) {
       return;
     }
 
     const normalizedName = zoneName.toLowerCase();
 
-    const territory = zones.find(
-      (zone) =>
-        zone.rawName.toLowerCase() === normalizedName ||
-        zone.name.toLowerCase() === normalizedName,
-    );
+    // Cactbot sends the game's place name, which is what rawName holds
+    // ("Halatali (Hard)"). Display names are ambiguous: over a hundred
+    // duties share theirs with a harder version, so only fall back to them.
+    const territory =
+      zones.find((zone) => zone.rawName.toLowerCase() === normalizedName) ??
+      zones.find((zone) => zone.name.toLowerCase() === normalizedName);
 
     if (!territory) {
       console.debug('[FFXIVLogHandler] No recorded territory named:', zoneName);
       return;
     }
 
-    console.info('[FFXIVLogHandler] Cactbot zone matched:', territory.name);
-    await this.enterTerritory(territory, new Date());
+    // Let the 265 line win if it's coming: it has the zone ID, so it can't
+    // pick the wrong variant. Starting from here and then restarting on the
+    // 265 line loses the buffer, which puts the whole video out of step
+    // with the death markers.
+    const timestamp = new Date();
 
-    // If Cactbot already told us we're in combat, we've joined mid-pull.
-    if (this.cactbotInCombat) {
-      await this.handleCombatChange(true, new Date());
+    this.pendingCactbotZone = setTimeout(() => {
+      this.pendingCactbotZone = undefined;
+      console.info('[FFXIVLogHandler] Cactbot zone matched:', territory.name);
+
+      this.enterTerritory(territory, timestamp)
+        .then(async () => {
+          // If Cactbot already told us we're in combat, we joined mid-pull.
+          if (this.cactbotInCombat) {
+            await this.handleCombatChange(true, new Date());
+          }
+        })
+        .catch((error) =>
+          console.error('[FFXIVLogHandler] Cactbot zone entry failed', error),
+        );
+    }, CACTBOT_ZONE_GRACE_MS);
+  }
+
+  private clearPendingCactbotZone() {
+    if (this.pendingCactbotZone) {
+      clearTimeout(this.pendingCactbotZone);
+      this.pendingCactbotZone = undefined;
     }
   }
 
@@ -232,6 +271,20 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     if (this.currentZone?.id === territory.id) {
       // Duplicate zone info, e.g. the 265 line following a Cactbot event, or
       // IINACT re-emitting the zone on start. Nothing to do.
+      return;
+    }
+
+    if (
+      this.currentZone &&
+      this.currentZone.name === territory.name &&
+      this.currentZone.type === territory.type
+    ) {
+      // Same duty, different table entry: a name match picked a sibling
+      // variant. Adopt the precise entry rather than restarting, which
+      // would throw away the buffer.
+      console.info('[FFXIVLogHandler] Zone refined to', territory.rawName);
+      this.currentZone = territory;
+      this.mode = FFXIVLogHandler.getRecordMode(territory);
       return;
     }
 

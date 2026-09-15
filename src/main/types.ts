@@ -5,6 +5,8 @@ import { VideoCategory } from '../types/VideoCategory';
 import { Tag } from 'react-tag-autocomplete';
 import { DateValueType } from 'react-tailwindcss-datepicker';
 import { Job } from './FFXIVTypes';
+import { ESupportedEncoders } from './obsEnums';
+import { ReactNode } from 'react';
 
 /**
  * Application recording status.
@@ -27,6 +29,11 @@ enum RecStatus {
   Reconfiguring,
 }
 
+type ActivityStatus = {
+  category: VideoCategory;
+  start: number;
+};
+
 enum MicStatus {
   NONE,
   MUTED,
@@ -40,6 +47,14 @@ enum SaveStatus {
   Saving,
   NotSaving,
 }
+
+/**
+ * Kill video creation status.
+ */
+type KillVideoStatus = {
+  queued: number;
+  perc: number;
+};
 
 /**
  * We display any OBS crashes on the frontend so we don't silently recover
@@ -161,8 +176,9 @@ type FileInfo = {
 };
 
 type VideoQueueItem = {
-  source: string;
-  suffix: string;
+  name: string; // Can be an OBS timestamp if recording or more complicated if clipping.
+  source: string; // Can be either a path or a URL.
+  suffix: string; // Typically details of the recording, but can also be a "clipped at ..." description.
   offset: number;
   duration: number;
   clip: boolean;
@@ -177,6 +193,8 @@ type VideoQueueItem = {
 type Metadata = {
   category: VideoCategory;
   parentCategory?: VideoCategory; // present if it's a clip
+  parentVideoName?: string; // present if a clip knows the parent video name
+  parentVideoOffset?: number; // seconds into the source video where the clip starts
   duration: number;
   start?: number; // epoch start time of activity
   clippedAt?: number; // epoch time of clipping
@@ -209,10 +227,13 @@ type Metadata = {
   bossPercent?: number;
   bossName?: string;
   pull?: number;
+  appVersion?: string;
+  encoder?: ESupportedEncoders; // encoder used to record
+  size?: number; // size of video in bytes
 };
 
 /**
- * We mandata some fields are present for cloud videos that are optional for
+ * We mandate some fields are present for cloud videos that are optional for
  * disk based videos.
  */
 type CloudMetadata = Metadata & {
@@ -263,6 +284,8 @@ type RendererVideo = Metadata & {
   uniqueId: string;
 };
 
+type RendererClip = RendererVideo & { category: VideoCategory.Clips };
+
 type SoloShuffleTimelineSegment = {
   round: number;
   timestamp: number;
@@ -299,6 +322,18 @@ type AudioSource = {
   friendly?: string; // A user-friendly name for the source
   device?: string | number; // Machine friendly identifier for the device or window, I think this can only be a string in practice.
   volume: number; // Current volume setting (0-1)
+  tracks?: number; // Exactly six OBS tracks represented by the six least significant bits.
+};
+
+type Character = {
+  name: string;
+  realm: string;
+  specID: number;
+};
+
+type CharacterFilter = {
+  name: string;
+  realm: string;
 };
 
 /**
@@ -307,10 +342,9 @@ type AudioSource = {
  */
 enum Pages {
   'None',
-  'WoW',
-  'FFXIV',
   'SceneEditor',
   'Settings',
+  'InstantReplay',
 }
 
 /**
@@ -339,6 +373,24 @@ type AppState = {
   language: Language;
   cloudStatus: CloudStatus;
   diskStatus: DiskStatus;
+  chatOpen: boolean;
+  preferredViewpoint: string;
+};
+
+type CombatLogPathStatus = {
+  advanced: boolean;
+  latestLogAgeMs: number;
+};
+
+type CombatLoggingStatus = {
+  retail: CombatLogPathStatus;
+  classic: CombatLogPathStatus;
+  era: CombatLogPathStatus;
+  retailPtr: CombatLogPathStatus;
+  classicPtr: CombatLogPathStatus;
+};
+
+type CloudState = {
   uploadProgress: number;
   downloadProgress: number;
   queuedUploads: number;
@@ -380,13 +432,16 @@ type BaseConfig = {
   recordRetail: boolean;
   retailLogPath: string;
   recordClassic: boolean;
+  recordClassicPtr: boolean;
   classicLogPath: string;
+  classicPtrLogPath: string;
   recordEra: boolean;
   eraLogPath: string;
   recordRetailPtr: boolean;
   retailPtrLogPath: string;
   recordFFXIV: boolean;
   FFXIVWebSocketURL: string;
+  validateLogPaths: boolean;
 };
 
 type ObsVideoConfig = {
@@ -449,7 +504,7 @@ type VideoMarker = {
 
 type SliderMark = {
   value: number;
-  label: JSX.Element;
+  label: ReactNode;
 };
 
 type CloudStatus = {
@@ -463,6 +518,7 @@ type CloudStatus = {
   del: boolean;
   usage: number;
   limit: number;
+  migrated: boolean;
 };
 
 type DiskStatus = {
@@ -484,6 +540,21 @@ interface IBrowserWindow {
 
 type UploadQueueItem = {
   path: string;
+};
+
+type KillVideoQueueItem = {
+  uuid: string; // unique job uuid
+  width: number;
+  height: number;
+  fps: number;
+  segments: KillVideoSegment[];
+  audioSegmentIndex: number; // -1 to splice each POV's audio; otherwise use one POV's audio.
+};
+
+type KillVideoSegment = {
+  video: RendererVideo;
+  start: number;
+  stop: number;
 };
 
 type CreateMultiPartUploadResponseBody = {
@@ -628,6 +699,27 @@ enum SoundAlerts {
   MANUAL_RECORDING_STOP = 'manual-recording-stop',
 }
 
+type InstantReplayData = {
+  path: string;
+  category: VideoCategory;
+  deaths: PlayerDeathType[];
+  challengeModeTimeline?: RawChallengeModeTimelineSegment[];
+  soloShuffleTimeline?: SoloShuffleTimelineSegment[];
+};
+
+type InstantReplayState = {
+  current: InstantReplayData | null;
+  open: InstantReplayData | null;
+};
+
+enum DialogType {
+  NONE,
+  LOCK,
+  TAG,
+  KILL,
+  DELETE,
+}
+
 export {
   RecStatus,
   SaveStatus,
@@ -644,6 +736,7 @@ export {
   VideoQueueItem,
   Metadata,
   RendererVideo,
+  RendererClip,
   Flavour,
   SoloShuffleTimelineSegment,
   EDeviceType,
@@ -689,4 +782,16 @@ export {
   WowProcessEvent,
   FFXIVProcessEvent,
   SoundAlerts,
+  CloudState,
+  ActivityStatus,
+  CombatLoggingStatus,
+  CombatLogPathStatus,
+  KillVideoQueueItem,
+  KillVideoSegment,
+  KillVideoStatus,
+  Character,
+  CharacterFilter,
+  InstantReplayData,
+  InstantReplayState,
+  DialogType,
 };

@@ -9,18 +9,16 @@ import SaveIcon from '@mui/icons-material/Save';
 import { Workflow } from 'lucide-react';
 import { Tooltip } from './components/Tooltip/Tooltip';
 import { getLocalePhrase } from 'localisation/translations';
-import { Table } from '@tanstack/react-table';
 import { Phrase } from 'localisation/phrases';
 
 interface IProps {
   appState: AppState;
   setAppState: Dispatch<SetStateAction<AppState>>;
-  table: Table<RendererVideo>;
   categoryState: RendererVideo[];
 }
 
 const StorageFilterToggle = (props: IProps) => {
-  const { appState, setAppState, table, categoryState } = props;
+  const { appState, setAppState, categoryState } = props;
   const { storageFilter, language } = appState;
 
   const hasDisk = categoryState.filter((rv) => !rv.cloud).length > 0;
@@ -32,11 +30,8 @@ const StorageFilterToggle = (props: IProps) => {
       return;
     }
 
-    table.toggleAllRowsSelected(false);
-
     setAppState((prevState) => ({
       ...prevState,
-      selectedVideos: [],
       storageFilter,
     }));
   };
@@ -53,6 +48,7 @@ const StorageFilterToggle = (props: IProps) => {
       <ToggleGroupItem value={StorageFilter.DISK} disabled={!hasDisk}>
         <Tooltip
           content={getLocalePhrase(language, Phrase.ShowDiskOnlyTooltip)}
+          onClick={() => {}}
         >
           <SaveIcon sx={{ height: 18, width: 18 }} />
         </Tooltip>
@@ -61,13 +57,17 @@ const StorageFilterToggle = (props: IProps) => {
       <ToggleGroupItem value={StorageFilter.CLOUD} disabled={!hasCloud}>
         <Tooltip
           content={getLocalePhrase(language, Phrase.ShowCloudOnlyTooltip)}
+          onClick={() => {}}
         >
           <CloudIcon sx={{ height: 18, width: 18 }} />
         </Tooltip>
       </ToggleGroupItem>
 
       <ToggleGroupItem value={StorageFilter.BOTH}>
-        <Tooltip content={getLocalePhrase(language, Phrase.ShowBothTooltip)}>
+        <Tooltip
+          content={getLocalePhrase(language, Phrase.ShowBothTooltip)}
+          onClick={() => {}}
+        >
           <Workflow size={18} />
         </Tooltip>
       </ToggleGroupItem>

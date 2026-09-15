@@ -8,6 +8,7 @@ import {
   Tray,
   Menu,
   clipboard,
+  protocol,
 } from 'electron';
 import os from 'os';
 import { uIOhook } from 'uiohook-napi';
@@ -19,6 +20,10 @@ import {
   setupApplicationLogging,
   getAvailableDisplays,
   getAssetPath,
+  handleSafeVodRequest,
+  runFirstTimeSetupActionsObs,
+  runFirstTimeSetupActionsNoObs,
+  createDiagsBundle,
 } from './util';
 import { OurDisplayType, SoundAlerts, VideoPlayerSettings } from './types';
 import ConfigService from '../config/ConfigService';
@@ -31,7 +36,6 @@ import DiskClient from 'storage/DiskClient';
 import Poller from 'utils/Poller';
 import Recorder from './Recorder';
 import AsyncQueue from 'utils/AsyncQueue';
-import { ESupportedEncoders } from './obsEnums';
 
 const logDir = setupApplicationLogging();
 const appVersion = app.getVersion();
@@ -57,13 +61,46 @@ const manager = new Manager();
  */
 const cfg = ConfigService.getInstance();
 
+// Don't bother to signal any changes to the frontend here, they Window isn't
+// shown yet so they can't have opened the settings.
+const firstTimeSetup = cfg.get<boolean>('firstTimeSetup');
+
+if (firstTimeSetup) {
+  // Things we want to do before we initialize OBS.
+  console.info('[Main] Run first time setup actions');
+  runFirstTimeSetupActionsNoObs();
+  cfg.set('firstTimeSetup', false); // This gets done again when we default the encoder.
+}
+
 // It's a common problem that hardware acceleration causes rendering issues.
 // Unclear why this happens and surely not an application bug but we can
-// make it easy for users to disable it if they want to.
-if (!cfg.get<boolean>('hardwareAcceleration')) {
+// make it easy for users to disable it if they want to. This is applied on launch
+// and while the config can be changed the setting is immutable for the remainder
+// of the processes lifetime.
+const hardwareAccelerationAtStartup = cfg.get<boolean>('hardwareAcceleration');
+
+if (!hardwareAccelerationAtStartup) {
   console.info('[Main] Disabling hardware acceleration');
   app.disableHardwareAcceleration();
 }
+
+ipcMain.handle('getHardwareAcceleration', () => {
+  return hardwareAccelerationAtStartup;
+});
+
+// Register the vod:// protocol as privileged. Required to securely play
+// videos from disk.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'vod',
+    privileges: {
+      bypassCSP: true,
+      standard: true,
+      stream: true,
+      supportFetchAPI: true,
+    },
+  },
+]);
 
 /**
  * Default the video player settings on app start.
@@ -95,7 +132,7 @@ const installExtensions = async () => {
       extensions.map((name) => installer[name]),
       forceDownload,
     )
-    .catch(console.log);
+    .catch(console.info);
 };
 
 /**
@@ -155,44 +192,37 @@ const createWindow = async () => {
     frame: false,
     title: `Warcraft Recorder v${appVersion}`,
     webPreferences: {
-      nodeIntegration: true,
-      webSecurity: false,
+      sandbox: true, // Good security practice.
       preload: app.isPackaged
         ? path.join(__dirname, 'preload.js')
         : path.join(__dirname, '../../.erb/dll/preload.js'),
     },
   });
 
+  // Prevent Windows from opening the native window menu on draggable regions.
+  window.on('system-context-menu', (event) => event.preventDefault());
+
   // We need to do this AFTER creating the window as it's used by the preview.
   Recorder.getInstance().initializeObs();
   await manager.startup();
 
-  // If this is first time setup, auto-pick an encoder for the user. Only do it
-  // if the current value is the software encoder, as this is new in 7.0.0, all
-  // users would be subject to it. This way, only the few people who really do
-  // prefer the software encoder will be inconvenienced.
-  const firstTimeSetup =
-    cfg.get<boolean>('firstTimeSetup') &&
-    cfg.get<string>('obsRecEncoder') === ESupportedEncoders.OBS_X264;
-
   if (firstTimeSetup) {
-    // Don't bother to signal to the frontend here, they would have to be
-    // very fast to have opened the settings already.
-    console.info('[Main] First time setup, picking default encoder');
-    const encoder = Recorder.getInstance().getSensibleEncoderDefault();
-    cfg.set('obsRecEncoder', encoder);
+    console.info('[Main] Run first time setup actions');
+    runFirstTimeSetupActionsObs();
+    cfg.set('firstTimeSetup', false);
   }
-
-  // Ensure we don't hit the above branch again.
-  cfg.set('firstTimeSetup', false);
 
   // This gets hit on a user triggering refresh with CTRL-R.
   window.on('ready-to-show', async () => {
-    console.log('[Main] Ready to show');
+    console.info('[Main] Ready to show');
 
-    const status = app.getGPUFeatureStatus();
-    const info = await app.getGPUInfo('complete');
-    console.info('[Main] GPU info', { status, info });
+    try {
+      const status = app.getGPUFeatureStatus();
+      const info = await app.getGPUInfo('complete');
+      console.info('[Main] GPU info', { status, info });
+    } catch (error) {
+      console.error('[Main] Failed to get GPU info', error);
+    }
 
     if (!window) {
       throw new Error('window is not defined');
@@ -220,6 +250,8 @@ const createWindow = async () => {
       cloud.refreshStatus(),
       cloud.refreshVideos(),
     ]);
+
+    manager.pushCombatLoggingStatus();
   });
 
   window.on('focus', () => {
@@ -362,6 +394,21 @@ ipcMain.on('logPath', (_event, args) => {
 });
 
 /**
+ * Zips a diags bundle up in the log folder and return the path.
+ */
+ipcMain.handle('createDiagsBundle', async () => {
+  return createDiagsBundle(logDir);
+});
+
+/**
+ * Generic open a file in system explorer listener.
+ */
+ipcMain.on('systemExplorer', (_event, target) => {
+  const targetPath = target as string;
+  openSystemExplorer(targetPath);
+});
+
+/**
  * Listener to write to clipboard.
  */
 ipcMain.on('writeClipboard', (_event, args) => {
@@ -399,11 +446,31 @@ ipcMain.handle('getAllDisplays', (): OurDisplayType[] => {
 const refreshCloudGuilds = async () => {
   console.info('[Main] Frontend triggered cloud guilds refresh');
   const client = CloudClient.getInstance();
-  await client.fetchAffiliations();
+  await client.fetchAffiliations(true);
   client.refreshStatus();
 };
 
 ipcMain.on('refreshCloudGuilds', refreshCloudGuilds);
+
+ipcMain.handle('getOrCreateChatCorrelator', async (event, video) => {
+  const client = CloudClient.getInstance();
+  return client.getOrCreateChatCorrelator(video);
+});
+
+ipcMain.handle('getChatMessages', async (event, correlator) => {
+  const client = CloudClient.getInstance();
+  return client.getChatMessages(correlator);
+});
+
+ipcMain.on('postChatMessage', (event, correlator, message) => {
+  const client = CloudClient.getInstance();
+  client.postChatMessage(correlator, message);
+});
+
+ipcMain.on('deleteChatMessage', (event, id) => {
+  const client = CloudClient.getInstance();
+  client.deleteChatMessage(id);
+});
 
 /**
  * Set/get global video player settings.
@@ -436,6 +503,13 @@ app.on('window-all-closed', async () => {
  */
 app.on('before-quit', () => {
   console.info('[Main] Running before-quit actions');
+
+  if (tray) {
+    console.info('[Main] Destroy tray icon');
+    tray.destroy();
+    tray = null;
+  }
+
   Poller.getInstance().stop();
   uIOhook.stop();
   Recorder.getInstance().shutdownOBS();
@@ -465,6 +539,10 @@ app
     });
 
     new MenuBuilder().buildMenu();
+
+    // Required by the video player to safely play files from disk.
+    protocol.handle('vod', handleSafeVodRequest);
+
     createWindow();
   })
   .catch(console.error);
@@ -477,8 +555,7 @@ const send = (channel: string, ...args: unknown[]) => {
 const playSoundAlert = (alert: SoundAlerts) => {
   if (!window || window.isDestroyed()) return; // Can happen on shutdown.
   console.info('[Main] Playing sound alert', alert);
-  const path = getAssetPath(`sounds/${alert}.mp3`);
-  send('playAudio', path);
+  send('playAudio', alert);
 };
 
 const getNativeWindowHandle = () => {

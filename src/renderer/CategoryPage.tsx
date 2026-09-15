@@ -1,19 +1,31 @@
 import * as React from 'react';
-import { AppState, RendererVideo } from 'main/types';
+import {
+  AppState,
+  DialogType,
+  RendererClip,
+  RendererVideo,
+  StorageFilter,
+} from 'main/types';
 import {
   Dispatch,
-  MutableRefObject,
+  RefObject,
   SetStateAction,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 import {
-  Eye,
   GripHorizontal,
   LockKeyhole,
   Trash,
   LockOpen,
+  CloudUpload,
+  CloudDownload,
+  ArrowLeftFromLine,
+  ArrowRightToLine,
+  Cloud,
 } from 'lucide-react';
 import { getLocalePhrase } from 'localisation/translations';
 import { VideoCategory } from '../types/VideoCategory';
@@ -21,8 +33,12 @@ import SearchBar from './SearchBar';
 import VideoMarkerToggles from './VideoMarkerToggles';
 import { useSettings } from './useSettings';
 import {
+  findClipParent,
+  getFriendlyCodecName,
   getVideoCategoryFilter,
+  getVideoParent,
   getVideoStorageFilter,
+  lockVideos,
   povDiskFirstNameSort,
 } from './rendererutils';
 import Separator from './components/Separator/Separator';
@@ -33,17 +49,21 @@ import MultiPovPlaybackToggles from './MultiPovPlaybackToggles';
 import VideoFilter from './VideoFilter';
 import { Resizable, ResizeCallback } from 're-resizable';
 import { Direction } from 're-resizable/lib/resizer';
-import VideoPlayer from './VideoPlayer';
+import VideoPlayer, { VideoPlayerRef } from './VideoPlayer';
 import Label from './components/Label/Label';
-import { Popover, PopoverContent } from './components/Popover/Popover';
-import { PopoverTrigger } from '@radix-ui/react-popover';
 import ViewpointSelection from './components/Viewpoints/ViewpointSelection';
-import useTable from './components/Tables/TableData';
+import useVideoSelectionTable from './components/Tables/useVideoSelectionTable';
 import { Tooltip } from './components/Tooltip/Tooltip';
 import DateRangePicker from './DateRangePicker';
 import StorageFilterToggle from './StorageFilterToggle';
 import VideoCorrelator from './VideoCorrelator';
 import { Phrase } from 'localisation/phrases';
+import BulkTransferDialog from './BulkTransferDialog';
+import VideoChat from './VideoChat';
+import ConfirmChatNamePrompt from './ConfirmChatNamePrompt';
+import LockDialog from './LockDialog';
+import TagDialog from './TagDialog';
+import KillVideoDialog from './KillVideoDialog';
 
 interface IProps {
   category: VideoCategory;
@@ -51,8 +71,8 @@ interface IProps {
   setVideoState: Dispatch<SetStateAction<RendererVideo[]>>;
   appState: AppState;
   setAppState: Dispatch<SetStateAction<AppState>>;
-  persistentProgress: MutableRefObject<number>;
-  playerHeight: MutableRefObject<number>;
+  persistentProgress: RefObject<number>;
+  playerHeight: RefObject<number>;
 }
 
 /**
@@ -74,13 +94,38 @@ const CategoryPage = (props: IProps) => {
     videoFilterTags,
     language,
     dateRangeFilter,
-    viewpointSelectionOpen,
     cloudStatus,
     storageFilter,
+    chatOpen,
   } = appState;
 
   const { write, del } = cloudStatus;
   const [config, setConfig] = useSettings();
+  const [dialog, setDialog] = useState<DialogType>(DialogType.NONE);
+
+  const setLockDialog = (open: boolean) =>
+    setDialog(open ? DialogType.LOCK : DialogType.NONE);
+
+  const setTagDialog = (open: boolean) =>
+    setDialog(open ? DialogType.TAG : DialogType.NONE);
+
+  const setDeleteDialog = (open: boolean) =>
+    setDialog(open ? DialogType.DELETE : DialogType.NONE);
+
+  const setKillVideoDialog = (open: boolean) =>
+    setDialog(open ? DialogType.KILL : DialogType.NONE);
+
+  const [lockDialogVideoTargetId, setLockDialogVideoTargetId] = useState<
+    string | null
+  >(null);
+
+  const [tagDialogVideoTargetId, setTagDialogVideoTargetId] = useState<
+    string | null
+  >(null);
+
+  const [killDialogVideoTargetId, setKillDialogVideoTargetId] = useState<
+    string | null
+  >(null);
 
   // The category state, recalculated only when required.
   const categoryState = useMemo<RendererVideo[]>(() => {
@@ -89,27 +134,92 @@ const CategoryPage = (props: IProps) => {
   }, [videoState, category]);
 
   // Filter by storage type before we apply grouping.
-  const correlatedState = useMemo<RendererVideo[]>(() => {
+  const correlatedState = useMemo(() => {
     const storageFilterFn = getVideoStorageFilter(storageFilter);
     const storageFilteredState = categoryState.filter(storageFilterFn);
     return VideoCorrelator.correlate(storageFilteredState);
   }, [categoryState, storageFilter]);
 
-  // Now apply filtering based on search tags and date range.
-  const filteredState = useMemo<RendererVideo[]>(() => {
+  // Now apply filtering based on search tags and date range. Build a lookup
+  // map here for efficient finding of the parent row of a video, which is a
+  // generally useful thing to have for downstream components.
+  const { filteredState, parentLookupMap } = useMemo(() => {
     const queryFilter = (rv: RendererVideo) =>
       new VideoFilter(rv, videoFilterTags, dateRangeFilter, language).filter();
-    return correlatedState.filter(queryFilter);
+
+    const filteredState = correlatedState.filter(queryFilter);
+    const parentLookupMap = new Map<string, RendererVideo>();
+
+    for (let i = 0; i < filteredState.length; i++) {
+      const parent = filteredState[i];
+      parentLookupMap.set(parent.uniqueId, parent);
+
+      for (let j = 0; j < parent.multiPov.length; j++) {
+        const child = parent.multiPov[j];
+        parentLookupMap.set(child.uniqueId, parent);
+      }
+    }
+
+    return { filteredState, parentLookupMap };
   }, [correlatedState, dateRangeFilter, videoFilterTags, language]);
 
-  // The data backing the video selection table.
-  const table = useTable(filteredState, appState, setVideoState);
+  // Tanstack table relies on stable references, so while we have the React
+  // compiler enabled we still need useCallback here or weird stuff will happen.
+  const getClipParent = useCallback(
+    (clip: RendererClip) => {
+      return findClipParent(clip, videoState);
+    },
+    [videoState],
+  );
+
+  const goToClipParent = useCallback(
+    (clip: RendererClip) => {
+      const parent = getClipParent(clip);
+
+      if (parent) {
+        persistentProgress.current =
+          clip.parentVideoOffset && clip.parentVideoOffset > 0
+            ? clip.parentVideoOffset
+            : 0;
+
+        setAppState((prevState) => ({
+          ...prevState,
+          category: parent.category,
+          selectedVideos: [parent],
+          multiPlayerMode: false,
+          playing: false,
+          videoFilterTags: [],
+          storageFilter: StorageFilter.BOTH,
+          dateRangeFilter: {
+            startDate: null,
+            endDate: null,
+          },
+        }));
+      }
+    },
+    [getClipParent, persistentProgress, setAppState],
+  );
+
+  const table = useVideoSelectionTable(
+    filteredState,
+    parentLookupMap,
+    appState,
+    setAppState,
+    setVideoState,
+    getClipParent,
+    goToClipParent,
+    setDialog,
+    setLockDialogVideoTargetId,
+    setTagDialogVideoTargetId,
+    setKillDialogVideoTargetId,
+  );
 
   const haveVideos = categoryState.length > 0;
   const isClips = category === VideoCategory.Clips;
 
   // Handle to reset the video player height.
   const resizableRef = useRef<Resizable>(null);
+  const videoPlayerRef = useRef<VideoPlayerRef>(null);
 
   useEffect(() => {
     const handleWindowResize = () => {
@@ -137,6 +247,37 @@ const CategoryPage = (props: IProps) => {
     };
   }, [playerHeight]);
 
+  const renderChat = (video: RendererVideo | undefined) => {
+    if (!video) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center text-foreground text-sm font-bold">
+          <Cloud size={35} className="mb-2" />
+          {getLocalePhrase(language, Phrase.ChatUploadToCloudText)}
+        </div>
+      );
+    }
+
+    if (config.cloudAccountName !== config.chatUserNameAgreed) {
+      return (
+        <ConfirmChatNamePrompt
+          cloudAccountName={config.cloudAccountName}
+          setConfig={setConfig}
+          language={language}
+        />
+      );
+    }
+
+    return (
+      <VideoChat
+        key={video.videoName}
+        videoPlayerRef={videoPlayerRef}
+        video={video}
+        language={language}
+        deletePermissions={del}
+      />
+    );
+  };
+
   /**
    * Handle a resize event.
    */
@@ -147,6 +288,99 @@ const CategoryPage = (props: IProps) => {
   ) => {
     const height = element.clientHeight;
     playerHeight.current = height;
+  };
+
+  const renderDrawerOpen = (
+    appVersion: string | undefined,
+    encoder: string | undefined,
+  ) => {
+    // Only the first row in the selection is relevant for the drawer display.
+    const selectedRows = table.getSelectedRowModel().rows;
+    const selectedRow = selectedRows[0];
+    let activeParentVideo = null;
+
+    if (selectedRow) {
+      activeParentVideo = selectedRow.original;
+    } else if (filteredState.length > 0) {
+      activeParentVideo = filteredState[0];
+    }
+
+    // Only try to find a chat video if we have a video with cloud storage,
+    // a start time and a hash, else we cannot find the chat correlator.
+    let chatVideo: RendererVideo | undefined = undefined;
+
+    if (activeParentVideo) {
+      chatVideo = [activeParentVideo, ...activeParentVideo.multiPov].find(
+        (rv) => rv.cloud && rv.uniqueHash && rv.start,
+      );
+    }
+
+    if (activeParentVideo) {
+      chatVideo = [activeParentVideo, ...activeParentVideo.multiPov].find(
+        (rv) => rv.cloud && rv.uniqueHash && rv.start,
+      );
+    }
+    const renderTextDescr = () => {
+      return (
+        <div className="flex items-center justify-start w-full h-[40px] pt-2 mx-2 text-sm font-bold text-foreground">
+          {appVersion && (
+            <>
+              {getLocalePhrase(language, Phrase.RecordedAt)} v{appVersion}.{' '}
+            </>
+          )}
+          {encoder && (
+            <>
+              {getLocalePhrase(language, Phrase.EncodedWith)}{' '}
+              {getFriendlyCodecName(encoder)}.
+            </>
+          )}
+        </div>
+      );
+    };
+
+    return (
+      <div className="max-w-[500px] min-w-[500px] h-full bg-background-higher flex flex-col mx-2 gap-y-2">
+        <div className="flex items-start">
+          <Button
+            onClick={() =>
+              setAppState((prev) => ({ ...prev, chatOpen: false }))
+            }
+            variant="ghost"
+            className="mt-2"
+            size="xs"
+          >
+            <ArrowRightToLine size={18} />
+          </Button>
+          {renderTextDescr()}
+        </div>
+        <div className="flex items-center justify-center w-full">
+          {activeParentVideo && (
+            <ViewpointSelection
+              video={activeParentVideo}
+              appState={appState}
+              setAppState={setAppState}
+              persistentProgress={persistentProgress}
+            />
+          )}
+        </div>
+        {renderChat(chatVideo)}
+      </div>
+    );
+  };
+
+  const renderDrawerClosed = () => {
+    return (
+      <div className="h-full relative">
+        <Button
+          onClick={() => setAppState((prev) => ({ ...prev, chatOpen: true }))}
+          variant="ghost"
+          className="absolute top-0 right-0 m-2"
+          size="xs"
+        >
+          <ArrowLeftFromLine size={18} />
+        </Button>
+      </div>
+    );
   };
 
   /**
@@ -163,6 +397,12 @@ const CategoryPage = (props: IProps) => {
     const videosToPlay =
       selectedVideos.length > 0 ? selectedVideos : povs.slice(0, 1);
 
+    const selectedVideoAppVersion =
+      videosToPlay.length > 1 ? undefined : videosToPlay[0].appVersion;
+
+    const selectedVideoEncoder =
+      videosToPlay.length > 1 ? undefined : videosToPlay[0].encoder;
+
     return (
       <Resizable
         ref={resizableRef}
@@ -170,9 +410,19 @@ const CategoryPage = (props: IProps) => {
           height: `${playerHeight.current}px`,
           width: '100%',
         }}
-        enable={{ bottom: true }}
+        enable={{
+          top: false,
+          right: false,
+          bottom: true,
+          left: false,
+          topRight: false,
+          bottomRight: false,
+          bottomLeft: false,
+          topLeft: false,
+        }}
         bounds="parent"
         onResize={onResize}
+        minHeight={chatOpen ? 500 : undefined}
         handleStyles={{
           bottom: {
             width: '50%',
@@ -188,15 +438,23 @@ const CategoryPage = (props: IProps) => {
           bottom: <GripHorizontal />,
         }}
       >
-        <VideoPlayer
-          key={videosToPlay.map((rv) => rv.videoName + rv.cloud).join(', ')}
-          videos={videosToPlay}
-          categoryState={categoryState}
-          persistentProgress={persistentProgress}
-          config={config}
-          appState={appState}
-          setAppState={setAppState}
-        />
+        <div className="flex h-full w-full">
+          <VideoPlayer
+            ref={videoPlayerRef}
+            instantReplay={null}
+            key={videosToPlay.map((rv) => rv.videoName + rv.cloud).join(', ')}
+            videos={videosToPlay}
+            filteredState={filteredState}
+            persistentProgress={persistentProgress}
+            config={config}
+            appState={appState}
+            setAppState={setAppState}
+          />
+
+          {chatOpen &&
+            renderDrawerOpen(selectedVideoAppVersion, selectedVideoEncoder)}
+          {!chatOpen && renderDrawerClosed()}
+        </div>
       </Resizable>
     );
   };
@@ -249,50 +507,21 @@ const CategoryPage = (props: IProps) => {
     const unique = [...new Set(names)];
     const allowMultiPlayer = unique.length > 1;
 
-    const protectVideo = (
-      _event: React.SyntheticEvent,
-      protect: boolean,
-      videos: RendererVideo[],
-    ) => {
-      window.electron.ipcRenderer.sendMessage('videoButton', [
-        'protect',
-        protect,
-        videos,
-      ]);
-
-      setVideoState((prev) => {
-        const state = [...prev];
-
-        state.forEach((rv) => {
-          // A video is uniquely identified by its name and storage type.
-          const match = videos.find(
-            (v) => v.videoName === rv.videoName && v.cloud === rv.cloud,
-          );
-
-          if (match) {
-            rv.isProtected = protect;
-          }
-        });
-
-        return state;
-      });
-    };
-
-    const renderProtectButton = () => {
-      const toProtect = selectedViewpoints;
+    const renderBulkLockButton = () => {
+      const toLock = selectedViewpoints;
 
       // If any videos in our selection are not protected, then the button's
-      // action is to protect.
-      const lock = !toProtect.every((v) => v.isProtected);
+      // action is to lock.
+      const lock = !toLock.every((v) => v.isProtected);
 
-      // Disable the protect button if there are no selected viewpoints, if we
-      // don't have write permissions, or if the action is to unprotect and we
+      // Disable the lock button if there are no selected viewpoints, if we
+      // don't have write permissions, or if the action is to unlock and we
       // don't have delete permissions.
       const noPermission =
-        (!write && toProtect.some((v) => v.cloud)) || // Some in the selection are cloud videos and no write permission.
-        (!del && !lock && toProtect.some((v) => v.cloud)); // Some in the selection are locked cloud videos no delete permission.
+        (!write && toLock.some((v) => v.cloud)) || // Some in the selection are cloud videos and no write permission.
+        (!del && !lock && toLock.some((v) => v.cloud)); // Some in the selection are locked cloud videos no delete permission.
 
-      const disabled = noPermission || toProtect.length < 1;
+      const disabled = noPermission || toLock.length < 1;
       const icon = lock ? <LockKeyhole size={18} /> : <LockOpen size={18} />;
 
       let tooltip = '';
@@ -312,7 +541,7 @@ const CategoryPage = (props: IProps) => {
               variant="secondary"
               size="sm"
               disabled={disabled}
-              onClick={(e) => protectVideo(e, lock, toProtect)}
+              onClick={() => lockVideos(toLock, lock, setVideoState)}
               className="border border-background"
             >
               {icon}
@@ -322,9 +551,8 @@ const CategoryPage = (props: IProps) => {
       );
     };
 
-    const renderDeleteButton = () => {
+    const renderBulkDeleteButton = () => {
       const toDelete = selectedViewpoints;
-
       const noPermission = !del && toDelete.some((v) => v.cloud);
       const disabled = toDelete.length < 1 || noPermission;
 
@@ -332,15 +560,28 @@ const CategoryPage = (props: IProps) => {
         ? getLocalePhrase(language, Phrase.GuildNoPermission)
         : getLocalePhrase(language, Phrase.BulkDeleteButtonTooltip);
 
+      // Only want to pass the parent IDs into the delete dialog.
+      const ids = [
+        ...new Set(
+          toDelete
+            .map((rv) => rv.uniqueId)
+            .map((id) => getVideoParent(id, parentLookupMap))
+            .filter((rv): rv is RendererVideo => Boolean(rv))
+            .map((rv) => rv.uniqueId),
+        ),
+      ];
+
       return (
         <Tooltip content={tooltip}>
           <div>
             <DeleteDialog
-              key={toDelete.map((v) => v.videoName).join(',')} // Forces a remount on selection change.
-              inScope={toDelete}
-              appState={appState}
+              open={dialog === DialogType.DELETE}
+              onOpenChange={setDeleteDialog}
+              targetVideoIds={ids}
+              parentLookupMap={parentLookupMap}
               setVideoState={setVideoState}
-              selectedRowCount={selectedRows.length}
+              language={language}
+              appState={appState}
             >
               <Button
                 variant="secondary"
@@ -351,6 +592,62 @@ const CategoryPage = (props: IProps) => {
                 <Trash size={18} />
               </Button>
             </DeleteDialog>
+          </div>
+        </Tooltip>
+      );
+    };
+
+    const renderBulkTransferButton = (upload: boolean) => {
+      const toTransfer = selectedViewpoints
+        .filter((rv) => rv.cloud === !upload)
+        .filter(
+          (rv) =>
+            selectedViewpoints.filter((v) => v.videoName === rv.videoName)
+              .length < 2, // If we have 2 or more viewpoints with the same name then one must be disk and one cloud.
+        );
+
+      const noPermission = upload && !write;
+
+      const disabled =
+        storageFilter !== StorageFilter.BOTH ||
+        toTransfer.length < 1 ||
+        noPermission ||
+        !cloudStatus.authorized;
+
+      let tooltip = upload
+        ? getLocalePhrase(language, Phrase.BulkUploadButtonTooltip)
+        : getLocalePhrase(language, Phrase.BulkDownloadButtonTooltip);
+
+      if (storageFilter !== StorageFilter.BOTH) {
+        tooltip = getLocalePhrase(language, Phrase.DisabledDueToFilter);
+      } else if (noPermission) {
+        tooltip = getLocalePhrase(language, Phrase.GuildNoPermission);
+      }
+
+      const icon = upload ? (
+        <CloudUpload size={18} />
+      ) : (
+        <CloudDownload size={18} />
+      );
+
+      return (
+        <Tooltip content={tooltip}>
+          <div>
+            <BulkTransferDialog
+              key={toTransfer.map((v) => v.videoName).join(',')} // Forces a remount on selection change.
+              inScope={toTransfer}
+              appState={appState}
+              upload={upload}
+            >
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={disabled}
+                className="border border-background"
+              >
+                {icon}
+              </Button>
+            </BulkTransferDialog>
           </div>
         </Tooltip>
       );
@@ -371,65 +668,6 @@ const CategoryPage = (props: IProps) => {
       }
 
       return <Label>{text}</Label>;
-    };
-
-    const renderViewpointSelectionPopover = () => {
-      return (
-        <Popover
-          open={viewpointSelectionOpen}
-          onOpenChange={() => {
-            setAppState((a) => {
-              return {
-                ...a,
-                viewpointSelectionOpen: !a.viewpointSelectionOpen,
-              };
-            });
-          }}
-        >
-          <PopoverTrigger asChild className="absolute top-[90px] left-0">
-            <Button
-              variant={viewpointSelectionOpen ? 'default' : 'secondary'}
-              size="xs"
-              className="z-10 h-20 rounded-l-none flex justify-start p-[3px]"
-            >
-              <Eye size={15} />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent
-            onEscapeKeyDown={(e) => {
-              // Close the popover when escape is pressed.
-              setAppState((a) => {
-                return {
-                  ...a,
-                  viewpointSelectionOpen: false,
-                };
-              });
-
-              // Need this for some reason else the popover doesn't close.
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            side="left"
-            className="p-0 absolute top-[-40px] left-[30px] w-auto min-w-max"
-            onInteractOutside={(e) => {
-              e.preventDefault();
-            }}
-            onPointerDownOutside={(e) => {
-              e.preventDefault();
-            }}
-            onFocusOutside={(e) => {
-              e.preventDefault();
-            }}
-          >
-            <ViewpointSelection
-              video={selectedRow ? selectedRow.original : filteredState[0]}
-              appState={appState}
-              setAppState={setAppState}
-              persistentProgress={persistentProgress}
-            />
-          </PopoverContent>
-        </Popover>
-      );
     };
 
     return (
@@ -471,7 +709,6 @@ const CategoryPage = (props: IProps) => {
                 categoryState={categoryState}
                 appState={appState}
                 setAppState={setAppState}
-                table={table}
               />
             </div>
           </div>
@@ -479,18 +716,45 @@ const CategoryPage = (props: IProps) => {
           <div>
             {renderSelectionLabel()}
             <div className="flex gap-x-1 mr-2 py-[1px]">
-              {renderProtectButton()}
-              {renderDeleteButton()}
+              {config.cloudUpload && renderBulkTransferButton(true)}
+              {config.cloudStorage && renderBulkTransferButton(false)}
+              {renderBulkLockButton()}
+              {renderBulkDeleteButton()}
             </div>
           </div>
         </div>
-        <div className="relative">{renderViewpointSelectionPopover()}</div>
         <div className="w-full h-full overflow-hidden">
+          <LockDialog
+            open={dialog === DialogType.LOCK}
+            onOpenChange={setLockDialog}
+            targetVideoId={lockDialogVideoTargetId}
+            parentLookupMap={parentLookupMap}
+            setVideoState={setVideoState}
+            language={language}
+            cloudStatus={cloudStatus}
+          />
+          <TagDialog
+            open={dialog === DialogType.TAG}
+            onOpenChange={setTagDialog}
+            targetVideoId={tagDialogVideoTargetId}
+            parentLookupMap={parentLookupMap}
+            setVideoState={setVideoState}
+            language={language}
+            cloudStatus={cloudStatus}
+          />
+          <KillVideoDialog
+            open={dialog === DialogType.KILL}
+            onOpenChange={setKillVideoDialog}
+            targetVideoId={killDialogVideoTargetId}
+            parentLookupMap={parentLookupMap}
+            language={language}
+          />
           <VideoSelectionTable
             table={table}
             appState={appState}
             setAppState={setAppState}
             persistentProgress={persistentProgress}
+            dialogOpen={dialog !== DialogType.NONE}
           />
         </div>
       </>
@@ -499,7 +763,7 @@ const CategoryPage = (props: IProps) => {
 
   const openSetupInstructions = () => {
     window.electron.ipcRenderer.sendMessage('openURL', [
-      'https://www.warcraftrecorder.com/about',
+      'https://www.warcraftrecorder.com/setup',
     ]);
   };
 

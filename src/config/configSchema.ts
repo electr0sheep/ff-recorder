@@ -1,14 +1,16 @@
 import { Phrase } from 'localisation/phrases';
-import { AudioSource, AudioSourceType } from 'main/types';
+import { defaultAudioTrack } from 'main/constants';
+import { AudioSource, AudioSourceType, CharacterFilter } from 'main/types';
 
 export type ConfigurationSchema = {
   storagePath: string;
   bufferStoragePath: string;
   separateBufferPath: boolean;
   retailLogPath: string;
-  classicLogPath: string;
-  eraLogPath: string;
   retailPtrLogPath: string;
+  classicLogPath: string;
+  classicPtrLogPath: string;
+  eraLogPath: string;
   maxStorage: number;
   monitorIndex: number;
   selectedCategory: number;
@@ -23,9 +25,10 @@ export type ConfigurationSchema = {
   obsCaptureMode: string; // 'window_capture' or 'game_capture' or 'monitor_capture'
   obsRecEncoder: string;
   recordRetail: boolean;
-  recordClassic: boolean;
-  recordEra: boolean;
   recordRetailPtr: boolean;
+  recordClassic: boolean;
+  recordClassicPtr: boolean;
+  recordEra: boolean;
   recordRaids: boolean;
   recordDungeons: boolean;
   recordTwoVTwo: boolean;
@@ -110,6 +113,10 @@ export type ConfigurationSchema = {
   FFXIVCloudUploadVariantDungeons: boolean;
   FFXIVRecordCriterionDungeons: boolean;
   FFXIVCloudUploadCriterionDungeons: boolean;
+  chatUserNameAgreed: string;
+  validateLogPaths: boolean;
+  validateNtfs: boolean;
+  characterUploadFilters: CharacterFilter[];
 };
 
 export type ConfigurationSchemaKey = keyof ConfigurationSchema;
@@ -140,6 +147,11 @@ export const configSchema = {
   },
   classicLogPath: {
     description: Phrase.ClassicLogPathDescription,
+    type: 'string',
+    default: '',
+  },
+  classicPtrLogPath: {
+    description: Phrase.ClassicPtrLogPathDescription,
     type: 'string',
     default: '',
   },
@@ -181,6 +193,7 @@ export const configSchema = {
         device: 'default',
         volume: 1,
         type: AudioSourceType.OUTPUT,
+        tracks: defaultAudioTrack,
       },
       {
         id: 'WCR Audio Source 2',
@@ -188,6 +201,7 @@ export const configSchema = {
         device: 'default',
         volume: 1,
         type: AudioSourceType.INPUT,
+        tracks: defaultAudioTrack,
       },
     ],
   },
@@ -246,6 +260,11 @@ export const configSchema = {
   },
   recordClassic: {
     description: Phrase.RecordClassicDescription,
+    type: 'boolean',
+    default: false,
+  },
+  recordClassicPtr: {
+    description: Phrase.RecordClassicPtrDescription,
     type: 'boolean',
     default: false,
   },
@@ -684,5 +703,25 @@ export const configSchema = {
     description: Phrase.FFXIVCloudUploadCriterionDungeonsDescription,
     type: 'boolean',
     default: true,
+  },
+  chatUserNameAgreed: {
+    description: Phrase.Unknown, // Not actually exposed.
+    type: 'string',
+    default: '',
+  },
+  validateLogPaths: {
+    description: Phrase.ValidateLogPathsDescription,
+    type: 'boolean',
+    default: true,
+  },
+  validateNtfs: {
+    description: Phrase.ValidateNtfsDescription,
+    type: 'boolean',
+    default: true,
+  },
+  characterUploadFilters: {
+    description: Phrase.Unknown, // Not actually exposed.
+    type: 'array',
+    default: [],
   },
 };

@@ -1,13 +1,21 @@
+import { FSWatcher } from 'fs';
 import { app, ipcMain, powerMonitor } from 'electron';
 import { uIOhook, UiohookKeyboardEvent } from 'uiohook-napi';
 import EraLogHandler from '../parsing/EraLogHandler';
 import {
   buildClipMetadata,
-  getMetadataForVideo,
+  checkAdvancedCombatLogging,
   getOBSFormattedDate,
   isManualRecordHotKey,
   nextKeyPressPromise,
   nextMousePressPromise,
+  pushActivityStatus,
+  resetInstantReplayState,
+  refreshInstantReplayState,
+  rendererVideoToMetadata,
+  resetActivityStatus,
+  getMostRecentCombatLogModifiedTime,
+  startWatchingConfigWtf,
 } from './util';
 import { VideoCategory } from '../types/VideoCategory';
 import Poller from '../utils/Poller';
@@ -23,6 +31,11 @@ import {
   WowProcessEvent,
   FFXIVProcessEvent,
   BaseConfig,
+  CombatLoggingStatus,
+  KillVideoQueueItem,
+  RendererVideo,
+  KillVideoSegment,
+  CombatLogPathStatus,
 } from './types';
 import {
   getObsVideoConfig,
@@ -60,6 +73,7 @@ export default class Manager {
   private retailLogHandler: RetailLogHandler | undefined;
   private retailPtrLogHandler: RetailLogHandler | undefined;
   private classicLogHandler: ClassicLogHandler | undefined;
+  private classicPtrLogHandler: ClassicLogHandler | undefined;
   private eraLogHandler: EraLogHandler | undefined;
   private FFXIVLogHandler: FFXIVLogHandler | undefined;
 
@@ -92,6 +106,23 @@ export default class Manager {
    * it starts a recording mid changing it, so set this to true while doing so.
    */
   private manualHotKeyDisabled = false;
+
+  /**
+   * File watchers for Config.wtf files, used to detect changes to
+   * the advanced combat logging setting.
+   */
+  private configWtfWatchers: FSWatcher[] = [];
+
+  /**
+   * Cached advanced logging status per flavour, pushed to the frontend.
+   */
+  private combatLoggingStatus: CombatLoggingStatus = {
+    retail: { advanced: true, latestLogAgeMs: -1 },
+    classic: { advanced: true, latestLogAgeMs: -1 },
+    era: { advanced: true, latestLogAgeMs: -1 },
+    retailPtr: { advanced: true, latestLogAgeMs: -1 },
+    classicPtr: { advanced: true, latestLogAgeMs: -1 },
+  };
 
   /**
    * Constructor.
@@ -137,6 +168,8 @@ export default class Manager {
     if (success) {
       this.setConfigValid();
       this.poller.start();
+      await this.watchConfigWtfFiles();
+      await this.refreshCombatLoggingStatus();
     }
 
     this.reconfiguring = false;
@@ -160,7 +193,7 @@ export default class Manager {
     this.refreshStatus();
 
     // The recording must be stopped to do this.
-    await this.recorder.forceStop();
+    await this.recorder.forceStop(true);
     let success = false;
 
     try {
@@ -183,6 +216,9 @@ export default class Manager {
     // ...and for the disk client too.
     await DiskClient.getInstance().refreshStatus();
     await DiskClient.getInstance().refreshVideos();
+
+    await this.watchConfigWtfFiles();
+    await this.refreshCombatLoggingStatus();
   }
 
   /**
@@ -208,6 +244,23 @@ export default class Manager {
       LogHandler.forceEndActivity();
     } else {
       FFXIVGenericLogHandler.forceEndActivity();
+    }
+  }
+
+  /**
+   * Start or stop a manual recording. Exactly one log handler must own it:
+   * prefer whichever already has an activity so a stop goes to the right
+   * place, then fall back to whichever game is running.
+   */
+  private toggleManualRecording() {
+    const useWow =
+      Boolean(LogHandler.activity) ||
+      (!FFXIVGenericLogHandler.activity && this.poller.isWowRunning());
+
+    if (useWow) {
+      LogHandler.handleManualRecordingHotKey();
+    } else {
+      FFXIVGenericLogHandler.handleManualRecordingHotKey();
     }
   }
 
@@ -272,25 +325,268 @@ export default class Manager {
 
     const inOverrun =
       LogHandler.overrunning || FFXIVGenericLogHandler.overrunning;
-    const inActivity =
-      Boolean(LogHandler.activity) || Boolean(FFXIVGenericLogHandler.activity);
+
+    // Whichever game's handler owns the activity. They never both do.
+    const activity = LogHandler.activity ?? FFXIVGenericLogHandler.activity;
 
     if (inOverrun) {
       this.refreshRecStatus(RecStatus.Overrunning);
-    } else if (inActivity) {
+    } else if (activity) {
       this.refreshRecStatus(RecStatus.Recording);
     } else if (this.recorder.obsState === ERecordingState.Recording) {
       this.refreshRecStatus(RecStatus.ReadyToRecord);
-    } else if (
-      this.recorder.obsState === ERecordingState.Offline ||
-      this.recorder.obsState === ERecordingState.Starting ||
-      this.recorder.obsState === ERecordingState.Stopping
-    ) {
+    } else if (this.recorder.obsState === ERecordingState.None) {
       this.refreshRecStatus(RecStatus.WaitingForWoW);
     }
 
     this.refreshMicStatus(this.recorder.obsMicState);
     this.redrawPreview();
+
+    if (activity) {
+      refreshInstantReplayState(activity);
+    } else if (!inOverrun) {
+      resetInstantReplayState();
+    }
+  }
+
+  public async refreshCombatLoggingStatus() {
+    const recordRetail = this.cfg.get<boolean>('recordRetail');
+    const retailLogPath = this.cfg.get<string>('retailLogPath');
+
+    const recordClassic = this.cfg.get<boolean>('recordClassic');
+    const classicLogPath = this.cfg.get<string>('classicLogPath');
+
+    const recordEra = this.cfg.get<boolean>('recordEra');
+    const eraLogPath = this.cfg.get<string>('eraLogPath');
+
+    const recordRetailPtr = this.cfg.get<boolean>('recordRetailPtr');
+    const retailPtrLogPath = this.cfg.get<string>('retailPtrLogPath');
+
+    const recordClassicPtr = this.cfg.get<boolean>('recordClassicPtr');
+    const classicPtrLogPath = this.cfg.get<string>('classicPtrLogPath');
+
+    const retail: CombatLogPathStatus = {
+      latestLogAgeMs: recordRetail
+        ? await getMostRecentCombatLogModifiedTime(retailLogPath)
+        : -1,
+      advanced:
+        !recordRetail || (await checkAdvancedCombatLogging(retailLogPath)),
+    };
+
+    const classic: CombatLogPathStatus = {
+      latestLogAgeMs: recordClassic
+        ? await getMostRecentCombatLogModifiedTime(classicLogPath)
+        : -1,
+      advanced:
+        !recordClassic || (await checkAdvancedCombatLogging(classicLogPath)),
+    };
+
+    const era: CombatLogPathStatus = {
+      latestLogAgeMs: recordEra
+        ? await getMostRecentCombatLogModifiedTime(eraLogPath)
+        : -1,
+      advanced: !recordEra || (await checkAdvancedCombatLogging(eraLogPath)),
+    };
+
+    const retailPtr: CombatLogPathStatus = {
+      latestLogAgeMs: recordRetailPtr
+        ? await getMostRecentCombatLogModifiedTime(retailPtrLogPath)
+        : -1,
+      advanced:
+        !recordRetailPtr ||
+        (await checkAdvancedCombatLogging(retailPtrLogPath)),
+    };
+
+    const classicPtr: CombatLogPathStatus = {
+      latestLogAgeMs: recordClassicPtr
+        ? await getMostRecentCombatLogModifiedTime(classicPtrLogPath)
+        : -1,
+      advanced:
+        !recordClassicPtr ||
+        (await checkAdvancedCombatLogging(classicPtrLogPath)),
+    };
+
+    this.combatLoggingStatus = {
+      retail,
+      classic,
+      era,
+      retailPtr,
+      classicPtr,
+    };
+
+    console.info(
+      '[Manager] Combat logging status is',
+      this.combatLoggingStatus,
+    );
+
+    this.pushCombatLoggingStatus();
+  }
+
+  private async checkAdvancedCombatLoggingForGameType(
+    key: keyof CombatLoggingStatus,
+  ) {
+    if (key === 'retail') {
+      const recordRetail = this.cfg.get<boolean>('recordRetail');
+      const retailLogPath = this.cfg.get<string>('retailLogPath');
+
+      const enabled = recordRetail
+        ? await checkAdvancedCombatLogging(retailLogPath)
+        : false;
+
+      if (this.combatLoggingStatus.retail.advanced !== enabled) {
+        console.info('[Manager] Advanced logging status changed', key, enabled);
+        this.combatLoggingStatus.retail.advanced = enabled;
+        this.pushCombatLoggingStatus();
+      }
+    } else if (key === 'classic') {
+      const recordClassic = this.cfg.get<boolean>('recordClassic');
+      const classicLogPath = this.cfg.get<string>('classicLogPath');
+
+      const enabled = recordClassic
+        ? await checkAdvancedCombatLogging(classicLogPath)
+        : false;
+
+      if (this.combatLoggingStatus.classic.advanced !== enabled) {
+        console.info('[Manager] Advanced logging status changed', key, enabled);
+        this.combatLoggingStatus.classic.advanced = enabled;
+        this.pushCombatLoggingStatus();
+      }
+    } else if (key === 'era') {
+      const recordEra = this.cfg.get<boolean>('recordEra');
+      const eraLogPath = this.cfg.get<string>('eraLogPath');
+
+      const enabled = recordEra
+        ? await checkAdvancedCombatLogging(eraLogPath)
+        : false;
+
+      if (this.combatLoggingStatus.era.advanced !== enabled) {
+        console.info('[Manager] Advanced logging status changed', key, enabled);
+        this.combatLoggingStatus.era.advanced = enabled;
+        this.pushCombatLoggingStatus();
+      }
+    } else if (key === 'retailPtr') {
+      const recordRetailPtr = this.cfg.get<boolean>('recordRetailPtr');
+      const retailPtrLogPath = this.cfg.get<string>('retailPtrLogPath');
+
+      const enabled = recordRetailPtr
+        ? await checkAdvancedCombatLogging(retailPtrLogPath)
+        : false;
+
+      if (this.combatLoggingStatus.retailPtr.advanced !== enabled) {
+        console.info('[Manager] Advanced logging status changed', key, enabled);
+        this.combatLoggingStatus.retailPtr.advanced = enabled;
+        this.pushCombatLoggingStatus();
+      }
+    } else if (key === 'classicPtr') {
+      const recordClassicPtr = this.cfg.get<boolean>('recordClassicPtr');
+      const classicPtrLogPath = this.cfg.get<string>('classicPtrLogPath');
+
+      const enabled = recordClassicPtr
+        ? await checkAdvancedCombatLogging(classicPtrLogPath)
+        : false;
+
+      if (this.combatLoggingStatus.classicPtr.advanced !== enabled) {
+        console.info('[Manager] Advanced logging status changed', key, enabled);
+        this.combatLoggingStatus.classicPtr.advanced = enabled;
+        this.pushCombatLoggingStatus();
+      }
+    } else {
+      console.error('[Manager] Invalid combat logging status key', key);
+      throw new Error('Invalid combat logging status key');
+    }
+  }
+
+  /**
+   * Push the cached combat logging status to the frontend.
+   */
+  public pushCombatLoggingStatus() {
+    send('updateCombatLoggingStatus', this.combatLoggingStatus);
+  }
+
+  /**
+   * Watch Config.wtf files for changes so the advanced logging status
+   * updates reactively when the user toggles the setting in WoW.
+   */
+  private watchConfigWtfFiles() {
+    console.info('[Manager] Close any existing Config.wtf file watchers');
+    this.configWtfWatchers.forEach((w) => w.close());
+    this.configWtfWatchers = [];
+
+    const recordRetail = this.cfg.get<boolean>('recordRetail');
+    const recordClassic = this.cfg.get<boolean>('recordClassic');
+    const recordEra = this.cfg.get<boolean>('recordEra');
+    const recordRetailPtr = this.cfg.get<boolean>('recordRetailPtr');
+    const recordClassicPtr = this.cfg.get<boolean>('recordClassicPtr');
+
+    if (recordRetail) {
+      const logPath = this.cfg.get<string>('retailLogPath');
+      const key: keyof CombatLoggingStatus = 'retail';
+
+      const watcher = startWatchingConfigWtf(logPath, () => {
+        this.checkAdvancedCombatLoggingForGameType(key);
+      });
+
+      if (watcher) {
+        console.info('[Manager] Watching Config.wtf for', key, logPath);
+        this.configWtfWatchers.push(watcher);
+      }
+    }
+
+    if (recordClassic) {
+      const logPath = this.cfg.get<string>('classicLogPath');
+      const key: keyof CombatLoggingStatus = 'classic';
+
+      const watcher = startWatchingConfigWtf(logPath, () => {
+        this.checkAdvancedCombatLoggingForGameType(key);
+      });
+
+      if (watcher) {
+        console.info('[Manager] Watching Config.wtf for', key, logPath);
+        this.configWtfWatchers.push(watcher);
+      }
+    }
+
+    if (recordEra) {
+      const logPath = this.cfg.get<string>('eraLogPath');
+      const key: keyof CombatLoggingStatus = 'era';
+
+      const watcher = startWatchingConfigWtf(logPath, () => {
+        this.checkAdvancedCombatLoggingForGameType(key);
+      });
+
+      if (watcher) {
+        console.info('[Manager] Watching Config.wtf for', key, logPath);
+        this.configWtfWatchers.push(watcher);
+      }
+    }
+
+    if (recordRetailPtr) {
+      const logPath = this.cfg.get<string>('retailPtrLogPath');
+      const key: keyof CombatLoggingStatus = 'retailPtr';
+
+      const watcher = startWatchingConfigWtf(logPath, () => {
+        this.checkAdvancedCombatLoggingForGameType(key);
+      });
+
+      if (watcher) {
+        console.info('[Manager] Watching Config.wtf for', key, logPath);
+        this.configWtfWatchers.push(watcher);
+      }
+    }
+
+    if (recordClassicPtr) {
+      const logPath = this.cfg.get<string>('classicPtrLogPath');
+      const key: keyof CombatLoggingStatus = 'classicPtr';
+
+      const watcher = startWatchingConfigWtf(logPath, () => {
+        this.checkAdvancedCombatLoggingForGameType(key);
+      });
+
+      if (watcher) {
+        console.info('[Manager] Watching Config.wtf for', key, logPath);
+        this.configWtfWatchers.push(watcher);
+      }
+    }
   }
 
   /**
@@ -298,6 +594,14 @@ export default class Manager {
    */
   private refreshRecStatus(status: RecStatus, msg = '') {
     send('updateRecStatus', status, msg);
+
+    const activity = LogHandler.activity ?? FFXIVGenericLogHandler.activity;
+
+    if (activity && status === RecStatus.Recording) {
+      pushActivityStatus(activity);
+    } else {
+      resetActivityStatus();
+    }
   }
 
   /**
@@ -374,7 +678,7 @@ export default class Manager {
         console.error('[Manager] OBS failed to start buffer for FFXIV', error);
       }
     } else {
-      await this.recorder.forceStop();
+      await this.recorder.forceStop(true);
 
       if (!this.audioSettingsOpen) {
         this.recorder.removeAudioSources();
@@ -443,7 +747,7 @@ export default class Manager {
 
     // Only stop recorder if WoW isn't running
     if (!this.poller.isWowRunning()) {
-      await this.recorder.forceStop();
+      await this.recorder.forceStop(true);
       this.recorder.clearFindWindowInterval();
 
       if (!this.audioSettingsOpen) {
@@ -471,10 +775,11 @@ export default class Manager {
 
       const logHandlers = [
         this.retailLogHandler,
-        this.classicLogHandler,
-        this.eraLogHandler,
         this.retailPtrLogHandler,
         this.FFXIVLogHandler,
+        this.classicLogHandler,
+        this.classicPtrLogHandler,
+        this.eraLogHandler,
       ];
 
       logHandlers
@@ -482,10 +787,11 @@ export default class Manager {
         .forEach((lh) => lh.destroy());
 
       this.retailLogHandler = undefined;
-      this.classicLogHandler = undefined;
-      this.eraLogHandler = undefined;
       this.retailPtrLogHandler = undefined;
       this.FFXIVLogHandler = undefined;
+      this.classicLogHandler = undefined;
+      this.classicPtrLogHandler = undefined;
+      this.eraLogHandler = undefined;
     }
 
     if (config.recordRetail) {
@@ -494,6 +800,12 @@ export default class Manager {
 
     if (config.recordClassic) {
       this.classicLogHandler = new ClassicLogHandler(config.classicLogPath);
+    }
+
+    if (config.recordClassicPtr) {
+      this.classicPtrLogHandler = new ClassicLogHandler(
+        config.classicPtrLogPath,
+      );
     }
 
     if (config.recordEra) {
@@ -569,42 +881,121 @@ export default class Manager {
     });
 
     // Clipping listener.
-    ipcMain.on('clip', async (_event, args) => {
-      console.info('[Manager] Clip request received with args', args);
+    ipcMain.on(
+      'clip',
+      async (
+        _event,
+        video: RendererVideo,
+        offset: number,
+        duration: number,
+      ) => {
+        console.info(
+          '[Manager] Clip request received with args',
+          video.videoSource,
+          offset,
+          duration,
+        );
 
-      const source = args[0];
-      const offset = args[1];
-      const duration = args[2];
+        const sourceMetadata = rendererVideoToMetadata({ ...video });
+        const now = new Date();
 
-      const sourceMetadata = await getMetadataForVideo(source);
-      const now = new Date();
-      const clipMetadata = buildClipMetadata(sourceMetadata, duration, now);
+        const clipMetadata = buildClipMetadata(
+          sourceMetadata,
+          duration,
+          now,
+          offset,
+          video.videoName,
+        );
 
-      const clipQueueItem: VideoQueueItem = {
-        source,
-        suffix: `Clipped at ${getOBSFormattedDate(now)}`,
-        offset,
-        duration,
-        clip: true,
-        metadata: clipMetadata,
-      };
+        const clipQueueItem: VideoQueueItem = {
+          name: video.videoName,
+          source: video.videoSource,
+          suffix: `Clipped at ${getOBSFormattedDate(now)}`,
+          offset,
+          duration,
+          clip: true,
+          metadata: clipMetadata,
+        };
 
-      VideoProcessQueue.getInstance().queueVideo(clipQueueItem);
-    });
+        VideoProcessQueue.getInstance().queueVideo(clipQueueItem);
+      },
+    );
 
-    // Force stop listener, to enable the force stop button to do its job.
-    ipcMain.on('recorder', async (_event, args) => {
-      if (args[0] === 'stop') {
-        console.info('[Manager] Force stopping recording due to user request.');
-        this.forceStop();
+    ipcMain.on(
+      'createKillVideo',
+      async (
+        _event,
+        width: number,
+        height: number,
+        fps: number,
+        segments: KillVideoSegment[],
+        audioSegmentIndex: number,
+      ) => {
+        console.info(
+          '[Manager] Creating kill video with settings:',
+          `${width}x${height} at ${fps} fps`,
+        );
+
+        if (segments.length < 2) {
+          console.warn('[Manager] Too few videos for kill video');
+          return;
+        }
+
+        console.info(
+          '[Manager] Have segments for kill video',
+          segments.map((seg) => ({
+            videoName: seg.video.videoName,
+            videoSource: seg.video.videoSource,
+            cloud: seg.video.cloud,
+            start: seg.start,
+            stop: seg.stop,
+          })),
+        );
+
+        const item: KillVideoQueueItem = {
+          uuid: crypto.randomUUID(),
+          width,
+          height,
+          fps,
+          segments,
+          audioSegmentIndex,
+        };
+
+        VideoProcessQueue.getInstance().queueCreateKillVideo(item);
+      },
+    );
+
+    // Listens for a manual recording being started via the button. The
+    // hotkey listener is handled separately.
+    ipcMain.on('toggleManualRecording', async () => {
+      if (!this.cfg.get('manualRecord')) {
+        // Manual recording is not enabled.
         return;
       }
 
-      if (this.poller.isWowRunning()) {
-        this.onWowStarted();
-      } else if (this.poller.isFFXIVRunning()) {
-        this.onFFXIVStarted();
+      if (!this.poller.isWowRunning() && !this.poller.isFFXIVRunning()) {
+        console.warn('[Manager] No game running when manual button pressed');
+        return;
       }
+
+      if (this.recorder.obsState !== ERecordingState.Recording) {
+        console.warn('[Manager] Recorder not ready when manual hotkey pressed');
+        return;
+      }
+
+      this.toggleManualRecording();
+    });
+
+    // Handles a click of the force stop button.
+    ipcMain.on('forceStopRecording', async () => {
+      this.forceStop();
+    });
+
+    // Test listener, to enable the test button to start a test.
+    ipcMain.on('test', (_event, args) => {
+      const testCategory = args[0] as VideoCategory;
+      const endTest = Boolean(args[1]);
+      this.test(testCategory, endTest);
     });
 
     /**
@@ -625,6 +1016,25 @@ export default class Manager {
 
       this.manualHotKeyDisabled = false;
       return event;
+    });
+
+    ipcMain.on(
+      'refreshCombatLogStatus',
+      async (): Promise<PTTKeyPressEvent> => {
+        this.manualHotKeyDisabled = true;
+
+        const event = await Promise.race([
+          nextKeyPressPromise(),
+          nextMousePressPromise(),
+        ]);
+
+        this.manualHotKeyDisabled = false;
+        return event;
+      },
+    );
+
+    ipcMain.on('refreshCombatLogStatus', () => {
+      this.refreshCombatLoggingStatus();
     });
 
     /**
@@ -660,18 +1070,7 @@ export default class Manager {
         return;
       }
 
-      // Exactly one handler must own the manual recording. Prefer whichever
-      // already has an activity so a stop goes to the right place, then
-      // fall back to whichever game is running.
-      const useWow =
-        Boolean(LogHandler.activity) ||
-        (!FFXIVGenericLogHandler.activity && wowRunning);
-
-      if (useWow) {
-        LogHandler.handleManualRecordingHotKey();
-      } else {
-        FFXIVGenericLogHandler.handleManualRecordingHotKey();
-      }
+      this.toggleManualRecording();
     });
 
     // If Windows is going to sleep, we don't want to confuse OBS. It would be
@@ -682,12 +1081,12 @@ export default class Manager {
       LogHandler.dropActivity();
       FFXIVGenericLogHandler.dropActivity();
       this.poller.stop();
-      await this.recorder.forceStop();
+      await this.recorder.forceStop(false); // No timeout on this.
     });
 
     powerMonitor.on('resume', async () => {
       console.info('[Manager] Detected Windows waking up from a sleep.');
-      await this.recorder.forceStop();
+      await this.recorder.forceStop(true);
       this.poller.start();
     });
   }

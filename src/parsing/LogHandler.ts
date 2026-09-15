@@ -12,14 +12,14 @@ import {
 } from '../main/types';
 import Activity from '../activitys/Activity';
 import RaidEncounter from '../activitys/RaidEncounter';
-
+import Beloren from '../activitys/encounters/Beloren';
+import CoiledAltar from '../activitys/encounters/CoiledAltar';
 import {
   ambiguate,
   isUnitFriendly,
   isUnitPlayer,
   isUnitSelf,
 } from './logutils';
-
 import LogLine from './LogLine';
 import { VideoCategory } from '../types/VideoCategory';
 import { allowRecordCategory } from '../utils/configUtils';
@@ -27,7 +27,11 @@ import { assert } from 'console';
 import Manual from 'activitys/Manual';
 import { playSoundAlert } from 'main/main';
 import Poller from 'utils/Poller';
-import { emitErrorReport } from 'main/util';
+import { emitErrorReport, refreshInstantReplayState } from 'main/util';
+import AsyncQueue from 'utils/AsyncQueue';
+import path from 'path';
+import { ESupportedEncoders } from 'main/obsEnums';
+import CrownOfTheCosmos from 'activitys/encounters/CrownOfTheCosmos';
 
 /**
  * Generic LogHandler class. Everything in this class must be valid for both
@@ -45,25 +49,45 @@ export default abstract class LogHandler {
 
   public static overrunning = false;
 
-  private static minBossHp = 100 * 10 ** 6;
-
   public combatLogWatcher: CombatLogWatcher;
 
   protected player: Combatant | undefined;
 
   private static stateChangeCallback: () => void;
 
-  constructor(logPath: string, dataTimeout: number) {
-    this.combatLogWatcher = new CombatLogWatcher(logPath, dataTimeout);
-    this.combatLogWatcher.watch();
+  /**
+   * The timer is static and thus shared across all LogHandlers. We don't want
+   * any weird behaviour when quickly switching between games. See Issue 855.
+   */
+  private static logDataTimeout: NodeJS.Timeout | null = null;
 
-    this.combatLogWatcher.on('timeout', (ms: number) => {
-      this.dataTimeout(ms);
-    });
+  /**
+   * The lower this timer the better, but log flush behaviour varies between
+   * games and we can't make it too low or we risk ending activities early. Let
+   * the specific log handler instance decide what the timeout should be.
+   */
+  private logDataTimeoutMs: number;
+
+  /**
+   * Enforces ordered processing of log lines. Some log line processing
+   * is asynchronous so we need to ensure later lines don't get processed
+   * before earlier ones.
+   */
+  protected logProcessQueue = new AsyncQueue(Number.MAX_SAFE_INTEGER);
+
+  constructor(logPath: string, dataTimeoutMins: number) {
+    this.logDataTimeoutMs = dataTimeoutMins * 60 * 1000;
+    this.combatLogWatcher = new CombatLogWatcher(logPath);
+    this.combatLogWatcher.watch();
+    const lpq = this.logProcessQueue;
 
     // For ease of testing force stop.
     this.combatLogWatcher.on('WARCRAFT_RECORDER_FORCE_STOP', () => {
-      LogHandler.forceEndActivity();
+      lpq.add(async () => LogHandler.forceEndActivity());
+    });
+
+    this.combatLogWatcher.on('WARCRAFT_RECORDER_LOG_ACTIVITY', () => {
+      lpq.add(async () => this.resetTimeout());
     });
   }
 
@@ -76,6 +100,39 @@ export default abstract class LogHandler {
   public destroy() {
     this.combatLogWatcher.unwatch();
     this.combatLogWatcher.removeAllListeners();
+  }
+
+  private static createRaidEncounter(
+    start: Date,
+    encounterID: number,
+    encounterName: string,
+    difficultyID: number,
+    flavour: Flavour,
+  ) {
+    switch (encounterID) {
+      case CrownOfTheCosmos.encounterId:
+        return new CrownOfTheCosmos(
+          start,
+          encounterName,
+          difficultyID,
+          flavour,
+        );
+
+      case Beloren.encounterId:
+        return new Beloren(start, encounterName, difficultyID, flavour);
+
+      case CoiledAltar.encounterId:
+        return new CoiledAltar(start, encounterName, difficultyID, flavour);
+
+      default:
+        return new RaidEncounter(
+          start,
+          encounterID,
+          encounterName,
+          difficultyID,
+          flavour,
+        );
+    }
   }
 
   protected async handleEncounterStartLine(line: LogLine, flavour: Flavour) {
@@ -108,7 +165,7 @@ export default abstract class LogHandler {
       return;
     }
 
-    const activity = new RaidEncounter(
+    const activity = LogHandler.createRaidEncounter(
       startDate,
       encounterID,
       encounterName,
@@ -121,6 +178,11 @@ export default abstract class LogHandler {
 
   protected async handleEncounterEndLine(line: LogLine) {
     console.debug('[LogHandler] Handling ENCOUNTER_END line:', line);
+
+    if (this.isManual()) {
+      console.info('[LogHandler] Ignoring line as in manual recording');
+      return;
+    }
 
     if (!LogHandler.activity) {
       console.info('[LogHandler] Encounter stop with no active encounter');
@@ -151,6 +213,11 @@ export default abstract class LogHandler {
   protected handleUnitDiedLine(line: LogLine): void {
     if (!LogHandler.activity) {
       return;
+    }
+
+    if (this.isRaid()) {
+      const raid = LogHandler.activity as RaidEncounter;
+      raid.onUnitDied(line);
     }
 
     const unitFlags = parseInt(line.arg(7), 16);
@@ -193,6 +260,7 @@ export default abstract class LogHandler {
     };
 
     LogHandler.activity.addDeath(playerDeath);
+    refreshInstantReplayState(LogHandler.activity);
   }
 
   protected static async startActivity(activity: Activity) {
@@ -204,9 +272,7 @@ export default abstract class LogHandler {
       return;
     }
 
-    console.info(
-      `[LogHandler] Start recording a video for category: ${category}`,
-    );
+    console.info(`[LogHandler] Start an activity for category: ${category}`);
 
     // Offset is the number of seconds to cut back into the buffer. That way
     // the buffer length is irrelevant. It is physically impossible to have
@@ -258,6 +324,7 @@ export default abstract class LogHandler {
     LogHandler.overrunning = false;
     const recorder = Recorder.getInstance();
     const poller = Poller.getInstance();
+    const cfg = ConfigService.getInstance();
 
     let videoFile;
 
@@ -304,9 +371,7 @@ export default abstract class LogHandler {
       const suffix = lastActivity.getFileName();
 
       if (lastActivity.category === VideoCategory.Raids) {
-        const minDuration = ConfigService.getInstance().get<number>(
-          'minEncounterDuration',
-        );
+        const minDuration = cfg.get<number>('minEncounterDuration');
         const notLongEnough = duration < minDuration;
 
         if (notLongEnough) {
@@ -315,7 +380,16 @@ export default abstract class LogHandler {
         }
       }
 
+      // Add the encoder field. Just do this directly from the config, as the
+      // encoder can't be changed mid recording.`
+      metadata.encoder = cfg.get<string>('obsRecEncoder') as ESupportedEncoders;
+
+      // This looks redundant as we also pass videoFile but this allows us to
+      // share logic with clipping of remote videos where there is no file path.
+      const videoName = path.basename(videoFile, path.extname(videoFile));
+
       const queueItem: VideoQueueItem = {
+        name: videoName,
         source: videoFile,
         suffix,
         offset: 0, // We don't need to offset here, we've already cut the buffer back.
@@ -338,14 +412,28 @@ export default abstract class LogHandler {
 
   protected async dataTimeout(ms: number) {
     console.info(
-      `[LogHandler] Haven't received data for combatlog in ${
+      `[LogHandler] Haven't received data from any combat logs in ${
         ms / 1000
       } seconds.`,
     );
 
-    if (LogHandler.activity) {
-      await LogHandler.forceEndActivity(-ms / 1000);
+    if (!LogHandler.activity) {
+      console.info('[LogHandler] No activity, no action');
+      return;
     }
+
+    if (LogHandler.overrunning) {
+      console.info('[LogHandler] Activity in overrun, no action');
+      return;
+    }
+
+    if (this.isManual()) {
+      console.info('[LogHandler] Manual recording, no action');
+      return;
+    }
+
+    console.info('[LogHandler] Force ending activity due to data timeout');
+    await LogHandler.forceEndActivity(-ms / 1000);
   }
 
   public static async forceEndActivity(timedelta = 0) {
@@ -415,6 +503,16 @@ export default abstract class LogHandler {
     return category === VideoCategory.MythicPlus;
   }
 
+  protected isManual() {
+    if (!LogHandler.activity) return false;
+    return LogHandler.activity.category === VideoCategory.Manual;
+  }
+
+  protected isRaid() {
+    if (!LogHandler.activity) return false;
+    return LogHandler.activity.category === VideoCategory.Raids;
+  }
+
   protected processCombatant(
     srcGUID: string,
     srcNameRealm: string,
@@ -471,38 +569,10 @@ export default abstract class LogHandler {
   }
 
   protected handleSpellDamage(line: LogLine) {
-    if (
-      !LogHandler.activity ||
-      LogHandler.activity.category !== VideoCategory.Raids
-    ) {
-      // We only care about this event for working out boss HP, which we
-      // only do in raids.
-      return;
+    if (this.isRaid()) {
+      const raid = LogHandler.activity as RaidEncounter;
+      raid.onSpellDamage(line);
     }
-
-    const max = parseInt(line.arg(15), 10);
-
-    if (
-      LogHandler.activity.flavour === Flavour.Retail &&
-      max < LogHandler.minBossHp
-    ) {
-      // Assume that if the HP is less than 100 million then it's not a boss.
-      // That avoids us marking bosses as 0% when they haven't been touched
-      // yet, i.e. short pulls on Gallywix before the shield is broken and we are
-      // yet to see SPELL_DAMAGE events (and instead get SPELL_ABSORBED). Only do
-      // this for retail as classic will have lower HP bosses and I can't be
-      // bothered worrying about it there.
-      return;
-    }
-
-    const raid = LogHandler.activity as RaidEncounter;
-    const current = parseInt(line.arg(14), 10);
-
-    // We don't check the unit here, the RaidEncounter class has logic
-    // to discard an update that lowers the max HP. That's a strategy to
-    // avoid having to maintain a list of boss unit names. It's a reasonable
-    // assumption usually that the boss has the most HP of all the units.
-    raid.updateHp(current, max);
   }
 
   /**
@@ -531,5 +601,21 @@ export default abstract class LogHandler {
 
     console.warn('[LogHandler] Unable to start manual recording');
     if (sounds) playSoundAlert(SoundAlerts.MANUAL_RECORDING_ERROR);
+  }
+
+  /**
+   * Reset the log data timeout. This should be called whenever we receive
+   * data from the combat log.
+   */
+  protected resetTimeout() {
+    if (LogHandler.logDataTimeout) {
+      clearTimeout(LogHandler.logDataTimeout);
+    }
+
+    LogHandler.logDataTimeout = setTimeout(() => {
+      this.logProcessQueue.add(async () =>
+        this.dataTimeout(this.logDataTimeoutMs),
+      );
+    }, this.logDataTimeoutMs);
   }
 }

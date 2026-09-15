@@ -1,5 +1,5 @@
 import { ConfigurationSchema } from 'config/configSchema';
-import { AudioSource } from 'main/types';
+import { AudioSource, CharacterFilter } from 'main/types';
 import * as React from 'react';
 
 export const getConfigValue = <T>(configKey: string): T => {
@@ -25,6 +25,7 @@ export const getSettings = (): ConfigurationSchema => {
     separateBufferPath: getConfigValue<boolean>('separateBufferPath'),
     retailLogPath: getConfigValue<string>('retailLogPath'),
     classicLogPath: getConfigValue<string>('classicLogPath'),
+    classicPtrLogPath: getConfigValue<string>('classicPtrLogPath'),
     eraLogPath: getConfigValue<string>('eraLogPath'),
     retailPtrLogPath: getConfigValue<string>('retailPtrLogPath'),
     maxStorage: getConfigValue<number>('maxStorage'),
@@ -35,6 +36,7 @@ export const getSettings = (): ConfigurationSchema => {
     startMinimized: getConfigValue<boolean>('startMinimized'),
     recordRetail: getConfigValue<boolean>('recordRetail'),
     recordClassic: getConfigValue<boolean>('recordClassic'),
+    recordClassicPtr: getConfigValue<boolean>('recordClassicPtr'),
     recordEra: getConfigValue<boolean>('recordEra'),
     recordRetailPtr: getConfigValue<boolean>('recordRetailPtr'),
     recordRaids: getConfigValue<boolean>('recordRaids'),
@@ -128,6 +130,10 @@ export const getSettings = (): ConfigurationSchema => {
     FFXIVCloudUploadVariantDungeons: getConfigValue<boolean>('FFXIVCloudUploadVariantDungeons'),
     FFXIVRecordCriterionDungeons: getConfigValue<boolean>('FFXIVRecordCriterionDungeons'),
     FFXIVCloudUploadCriterionDungeons: getConfigValue<boolean>('FFXIVCloudUploadCriterionDungeons'),
+    chatUserNameAgreed: getConfigValue<string>('chatUserNameAgreed'),
+    validateLogPaths: getConfigValue<boolean>('validateLogPaths'),
+    validateNtfs: getConfigValue<boolean>('validateNtfs'),
+    characterUploadFilters: getConfigValue<CharacterFilter[]>('characterUploadFilters'),
     /* eslint-enable prettier/prettier */
   };
 

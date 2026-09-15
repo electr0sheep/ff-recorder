@@ -1,10 +1,12 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 import { ObsProperty, SceneItemPosition, SourceDimensions } from 'noobs';
-import { AudioSourceType, SceneItem } from './types';
+import { AudioSourceType, RendererVideo, SceneItem } from './types';
+import { TChatMessageWithId } from 'types/api';
 
 export type Channels =
   | 'window'
-  | 'videoButton'
+  | 'videoButtonDisk'
+  | 'videoButtonCloud'
   | 'logPath'
   | 'openURL'
   | 'test'
@@ -18,7 +20,8 @@ export type Channels =
   | 'selectFile'
   | 'getNextKeyPress'
   | 'clip'
-  | 'deleteVideos'
+  | 'deleteVideosDisk'
+  | 'deleteVideosCloud'
   | 'writeClipboard'
   | 'getShareableLink'
   | 'doAppUpdate'
@@ -31,6 +34,7 @@ export type Channels =
   | 'deleteAudioSource'
   | 'setAudioSourceDevice'
   | 'setAudioSourceWindow'
+  | 'setAudioSourceTracks'
   | 'getDisplayInfo'
   | 'configurePreview'
   | 'showPreview'
@@ -162,6 +166,10 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.send('setAudioSourceWindow', id, window);
     },
 
+    setAudioSourceTracks(id: string, tracks: number): void {
+      ipcRenderer.send('setAudioSourceTracks', id, tracks);
+    },
+
     setAudioSourceVolume(id: string, volume: number): void {
       ipcRenderer.send('setAudioSourceVolume', id, volume);
     },
@@ -200,6 +208,71 @@ contextBridge.exposeInMainWorld('electron', {
 
     refreshCloudGuilds() {
       ipcRenderer.send('refreshCloudGuilds');
+    },
+
+    getOrCreateChatCorrelator(video: RendererVideo): Promise<string> {
+      return ipcRenderer.invoke('getOrCreateChatCorrelator', video);
+    },
+
+    getChatMessages(correlator: string): Promise<TChatMessageWithId[]> {
+      return ipcRenderer.invoke('getChatMessages', correlator);
+    },
+
+    postChatMessage(correlator: string, message: string) {
+      ipcRenderer.send('postChatMessage', correlator, message);
+    },
+
+    deleteChatMessage(id: number) {
+      ipcRenderer.send('deleteChatMessage', id);
+    },
+
+    toggleManualRecording() {
+      ipcRenderer.send('toggleManualRecording');
+    },
+
+    forceStopRecording() {
+      ipcRenderer.send('forceStopRecording');
+    },
+
+    createKillVideo(
+      width: number,
+      height: number,
+      fps: number,
+      sources: RendererVideo[],
+      audioSegmentIndex: number,
+    ) {
+      ipcRenderer.send(
+        'createKillVideo',
+        width,
+        height,
+        fps,
+        sources,
+        audioSegmentIndex,
+      );
+    },
+
+    clipVideo(video: RendererVideo, offset: number, duration: number) {
+      ipcRenderer.send('clip', video, offset, duration);
+    },
+
+    getHardwareAcceleration() {
+      return ipcRenderer.invoke('getHardwareAcceleration');
+    },
+
+    createDiagsBundle(): Promise<string> {
+      return ipcRenderer.invoke('createDiagsBundle');
+    },
+
+    openSystemExplorer(path: string) {
+      ipcRenderer.send('systemExplorer', path);
+    },
+
+    setOpenInstantReplayFile(path: string | null) {
+      ipcRenderer.send('setOpenInstantReplayFile', path);
+    },
+
+    refreshCombatLogStatus() {
+      ipcRenderer.send('refreshCombatLogStatus');
     },
   },
 });

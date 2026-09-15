@@ -33,10 +33,11 @@ import {
   Flavour,
   AudioSource,
   AppState,
+  RendererClip,
 } from 'main/types';
 import { ambiguate } from 'parsing/logutils';
 import { VideoCategory } from 'types/VideoCategory';
-import { ESupportedEncoders } from 'main/obsEnums';
+import { ESupportedEncoders, QualityPresets } from 'main/obsEnums';
 import {
   PTTEventType,
   PTTKeyPressEvent,
@@ -46,6 +47,11 @@ import { ConfigurationSchema } from 'config/configSchema';
 import { getLocalePhrase, Language } from 'localisation/translations';
 import { Phrase } from 'localisation/phrases';
 import { Job } from 'main/FFXIVTypes';
+import { Dispatch, SetStateAction } from 'react';
+
+const getVideoResult = (video: RendererVideo): boolean => {
+  return video.result;
+};
 
 /**
  * Returns a string of the form MM:SS.
@@ -72,15 +78,14 @@ const getFormattedDuration = (video: RendererVideo) => {
  * Return an array of death markers for a video.
  * @param video the RendereVideo data type for the video
  */
-const getOwnDeathMarkers = (video: RendererVideo, language: Language) => {
+const getOwnDeathMarkers = (
+  deaths: PlayerDeathType[],
+  player: RawCombatant,
+  language: Language,
+) => {
   const videoMarkers: VideoMarker[] = [];
-  const { player } = video;
 
-  if (video.deaths === undefined) {
-    return videoMarkers;
-  }
-
-  video.deaths.forEach((death: PlayerDeathType) => {
+  deaths.forEach((death: PlayerDeathType) => {
     const [name] = ambiguate(death.name);
 
     let markerText = getLocalePhrase(language, Phrase.Death);
@@ -115,14 +120,10 @@ const getOwnDeathMarkers = (video: RendererVideo, language: Language) => {
  * @param video the RendereVideo data type for the video
  * @param ownOnly true if should only get the players deaths
  */
-const getAllDeathMarkers = (video: RendererVideo, language: Language) => {
+const getAllDeathMarkers = (deaths: PlayerDeathType[], language: Language) => {
   const videoMarkers: VideoMarker[] = [];
 
-  if (video.deaths === undefined) {
-    return videoMarkers;
-  }
-
-  const groupedDeathsByTimestamp = video.deaths.reduce(
+  const groupedDeathsByTimestamp = deaths.reduce(
     (acc: Record<string, PlayerDeathType[]>, obj) => {
       const { timestamp } = obj;
 
@@ -194,14 +195,16 @@ const getAllDeathMarkers = (video: RendererVideo, language: Language) => {
  * Return an array of markers for a solo shuffle. This is markers for each
  * round, colored green for wins or red for losses.
  */
-const getRoundMarkers = (video: RendererVideo) => {
-  const videoMarkers: VideoMarker[] = [];
-
-  if (video.soloShuffleTimeline === undefined) {
-    return videoMarkers;
+const getRoundMarkers = (
+  soloShuffleTimeline: SoloShuffleTimelineSegment[] | undefined,
+) => {
+  if (soloShuffleTimeline === undefined) {
+    return [];
   }
 
-  video.soloShuffleTimeline.forEach((segment: SoloShuffleTimelineSegment) => {
+  const videoMarkers: VideoMarker[] = [];
+
+  soloShuffleTimeline.forEach((segment: SoloShuffleTimelineSegment) => {
     let markerText = `Round ${segment.round}`;
     let color: string;
 
@@ -231,15 +234,16 @@ const getRoundMarkers = (video: RendererVideo) => {
  * Return an array of markers for a challenge mode, this highlights the boss
  * encounters as orange and the trash as purple.
  */
-const getEncounterMarkers = (video: RendererVideo) => {
-  console.debug('getEncounterMarkers');
+const getEncounterMarkers = (
+  challengeModeTimeline: RawDungeonTimelineSegment[] | undefined,
+) => {
   const videoMarkers: VideoMarker[] = [];
 
-  if (video.challengeModeTimeline === undefined) {
+  if (challengeModeTimeline === undefined) {
     return videoMarkers;
   }
 
-  video.challengeModeTimeline.forEach((segment: RawDungeonTimelineSegment) => {
+  challengeModeTimeline.forEach((segment: RawDungeonTimelineSegment) => {
     if (
       segment.logEnd === undefined ||
       segment.logStart === undefined ||
@@ -263,7 +267,6 @@ const getEncounterMarkers = (video: RendererVideo) => {
       markerText = dungeonEncounters[segment.encounterId];
     }
 
-    console.debug('pushing video marker');
     videoMarkers.push({
       time: segment.timestamp,
       text: markerText,
@@ -367,22 +370,24 @@ const getEncounterNameById = (encounterId: number): string => {
 };
 
 /**
- * Get the dungeon name if possible, else an empty string.
+ * Get the dungeon name if possible, else "Unknown Map".
  */
-const getDungeonName = (video: RendererVideo) => {
+const getDungeonName = (video: RendererVideo): string => {
   const { mapID } = video;
 
   if (mapID === undefined) {
-    return '';
+    return 'Unknown Map';
   }
 
   if (video.flavour === Flavour.Retail) {
-    return dungeonsByMapId[mapID];
+    return dungeonsByMapId[mapID] ?? 'Unknown Map';
   }
 
   if (video.flavour === Flavour.Classic) {
-    return mopChallengeModes[mapID];
+    return mopChallengeModes[mapID] ?? 'Unknown Map';
   }
+
+  return 'Unknown Map';
 };
 
 const getFFXIVDungeonName = (video: RendererVideo) => {
@@ -409,6 +414,14 @@ const isFFXIVDungeon = (video: RendererVideo) => {
     category === VideoCategory.FFXIVDungeons ||
     parentCategory === VideoCategory.FFXIVDungeons
   );
+};
+
+/**
+ * Whether a category is one of the FFXIV ones. The side menu keeps the WoW
+ * and FFXIV categories in separate menus.
+ */
+const isFFXIVCategory = (category: VideoCategory) => {
+  return category.startsWith('FFXIV');
 };
 
 const isRaidUtil = (video: RendererVideo) => {
@@ -753,10 +766,14 @@ const getFriendlyEncoderName = (enc: ESupportedEncoders) => {
       return 'OBS H.264';
     case ESupportedEncoders.NVENC_H264:
       return 'NVIDIA H.264';
+    case ESupportedEncoders.NVENC_H265:
+      return 'NVIDIA H.265';
     case ESupportedEncoders.NVENC_AV1:
       return 'NVIDIA AV1';
     case ESupportedEncoders.AMD_H264:
       return 'AMD H.264';
+    case ESupportedEncoders.AMD_H265:
+      return 'AMD H.265';
     case ESupportedEncoders.AMD_AV1:
       return 'AMD AV1';
     case ESupportedEncoders.QSV_H264:
@@ -764,7 +781,27 @@ const getFriendlyEncoderName = (enc: ESupportedEncoders) => {
     case ESupportedEncoders.QSV_AV1:
       return 'Intel AV1';
     default:
-      throw new Error('Unknown Encoder');
+      throw new Error('Unknown Encoder: ' + enc);
+  }
+};
+
+const getFriendlyCodecName = (enc: string) => {
+  switch (enc) {
+    case ESupportedEncoders.OBS_X264:
+    case ESupportedEncoders.NVENC_H264:
+    case ESupportedEncoders.AMD_H264:
+    case ESupportedEncoders.QSV_H264:
+      return 'H264';
+    case ESupportedEncoders.NVENC_H265:
+    case ESupportedEncoders.AMD_H265:
+      return 'H265';
+    case ESupportedEncoders.NVENC_AV1:
+    case ESupportedEncoders.AMD_AV1:
+    case ESupportedEncoders.QSV_AV1:
+      return 'AV1';
+    default:
+      console.warn('Unknown Encoder', enc);
+      return 'Unknown Encoder';
   }
 };
 
@@ -1189,6 +1226,92 @@ const videoMatch = (a: RendererVideo, b: RendererVideo) =>
 
 const videoMatchName = (a: RendererVideo, name: string) => a.videoName === name;
 
+const translateQuality = (p: QualityPresets, language: Language) => {
+  switch (p) {
+    case QualityPresets.ULTRA:
+      return getLocalePhrase(language, Phrase.Ultra);
+    case QualityPresets.HIGH:
+      return getLocalePhrase(language, Phrase.High);
+    case QualityPresets.MODERATE:
+      return getLocalePhrase(language, Phrase.Moderate);
+    case QualityPresets.LOW:
+      return getLocalePhrase(language, Phrase.Low);
+    default:
+      throw new Error('Unknown quality');
+  }
+};
+
+const formatRealmNameForDisplay = (realm: string) => {
+  // Add a space before capital letters and the first number.
+  return realm.replace(/([A-Z])|(?<!\d)(\d)/g, ' $1$2').trim();
+};
+
+const findClipParent = (
+  clip: RendererClip,
+  videos: RendererVideo[],
+): RendererVideo | undefined => {
+  if (clip.player?._GUID === 'WCR MultiPov GUID') {
+    // Multiview videos are clips and we might be able to handle them but I
+    // can't be bothered with the headache for now.
+    return undefined;
+  }
+
+  const parentVideoName = clip.parentVideoName
+    ? clip.parentVideoName
+    : clip.videoName.slice(0, -33); // " - Clipped at ..." is 33 characters.
+
+  const parent = videos.find(
+    (candidate) => candidate.videoName === parentVideoName,
+  );
+
+  return parent;
+};
+
+const getVideoParent = (
+  uniqueId: string | null | undefined,
+  parentLookupMap: Map<string, RendererVideo>,
+): RendererVideo | undefined => {
+  return uniqueId ? parentLookupMap.get(uniqueId) : undefined;
+};
+
+const getVideoGroup = (
+  uniqueId: string | null | undefined,
+  parentLookupMap: Map<string, RendererVideo>,
+): Array<RendererVideo> => {
+  const parent = getVideoParent(uniqueId, parentLookupMap);
+  return parent ? [parent, ...parent.multiPov] : [];
+};
+
+const getVideoGroupIds = (
+  uniqueId: string | null | undefined,
+  parentLookupMap: Map<string, RendererVideo>,
+): Array<string> => {
+  return getVideoGroup(uniqueId, parentLookupMap).map(
+    (video) => video.uniqueId,
+  );
+};
+
+const lockVideos = (
+  targets: Array<RendererVideo>,
+  lock: boolean,
+  setVideoState: Dispatch<SetStateAction<Array<RendererVideo>>>,
+) => {
+  const disk = targets.filter((v) => !v.cloud);
+  const cloud = targets.filter((v) => v.cloud);
+
+  const ipc = window.electron.ipcRenderer;
+  ipc.sendMessage('videoButtonDisk', ['protect', lock, disk]);
+  ipc.sendMessage('videoButtonCloud', ['protect', lock, cloud]);
+
+  setVideoState((prev) => {
+    return prev.map((rv) => {
+      return targets.some((target) => rv.uniqueId === target.uniqueId)
+        ? { ...rv, isProtected: lock }
+        : rv;
+    });
+  });
+};
+
 export {
   getFormattedDuration,
   getWoWClassColor,
@@ -1257,4 +1380,13 @@ export {
   getFFXIVDungeonBossName,
   getFFXIVPullNumber,
   isFFXIVDungeon,
+  isFFXIVCategory,
+  translateQuality,
+  getFriendlyCodecName,
+  formatRealmNameForDisplay,
+  findClipParent,
+  getVideoParent,
+  getVideoGroup,
+  getVideoGroupIds,
+  lockVideos,
 };

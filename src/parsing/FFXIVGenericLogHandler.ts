@@ -28,6 +28,8 @@ import Poller from 'utils/Poller';
 import { emitErrorReport } from 'main/util';
 import FFXIVCombatLogWatcher from './FFXIVCombatLogWatcher';
 import FFXIVLogLine from './FFXIVLogLine';
+import path from 'path';
+import { ESupportedEncoders } from 'main/obsEnums';
 
 /**
  * Generic LogHandler class. Everything in this class must be valid for both
@@ -255,7 +257,13 @@ export default abstract class FFXIVGenericLogHandler {
         }
       }
 
+      // The encoder can't change mid recording, so take it from the config.
+      metadata.encoder = ConfigService.getInstance().get<string>(
+        'obsRecEncoder',
+      ) as ESupportedEncoders;
+
       const queueItem: VideoQueueItem = {
+        name: path.basename(videoFile, path.extname(videoFile)),
         source: videoFile,
         suffix,
         offset: 0, // We don't need to offset here, we've already cut the buffer back.

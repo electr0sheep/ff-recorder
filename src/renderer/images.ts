@@ -20,6 +20,7 @@ import spec266 from '../../assets/specs/266.png';
 import spec268 from '../../assets/specs/268.png';
 import spec270 from '../../assets/specs/270.png';
 import spec581 from '../../assets/specs/581.png';
+import spec1480 from '../../assets/specs/1480.png';
 import spec63 from '../../assets/specs/63.png';
 import spec65 from '../../assets/specs/65.png';
 import spec70 from '../../assets/specs/70.png';
@@ -116,6 +117,7 @@ import affix5 from '../../assets/affixes/5.jpg';
 import affix7 from '../../assets/affixes/7.jpg';
 import affix9 from '../../assets/affixes/9.jpg';
 import affix162 from '../../assets/affixes/162.jpg';
+import affix165 from '../../assets/affixes/165.jpg';
 
 import deathknight from '../../assets/class/deathknight.png';
 import druid from '../../assets/class/druid.png';
@@ -182,6 +184,7 @@ const specImages = {
   268: spec268,
   270: spec270,
   581: spec581,
+  1480: spec1480,
   63: spec63,
   65: spec65,
   70: spec70,
@@ -254,6 +257,7 @@ const affixImages = {
   7: affix7,
   9: affix9,
   162: affix162,
+  165: affix165,
 };
 
 const classImages: Record<WoWCharacterClassType, string> = {

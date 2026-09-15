@@ -4,9 +4,13 @@ import {
   Dice2,
   Dice3,
   Dice5,
+  FileText,
   Goal,
   HardHat,
   MonitorCog,
+  Play,
+  Radio,
+  Square,
   Sword,
   Swords,
   TrendingUpDown,
@@ -20,14 +24,24 @@ import {
   faSpaghettiMonsterFlying,
 } from '@fortawesome/free-solid-svg-icons';
 import {
+  ActivityStatus,
+  CombatLoggingStatus,
   AppState,
   ErrorReport,
+  InstantReplayState,
   MicStatus,
   Pages,
   RecStatus,
   SaveStatus,
 } from 'main/types';
-import { MutableRefObject, useEffect, useState } from 'react';
+import {
+  Dispatch,
+  RefObject,
+  SetStateAction,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { ConfigurationSchema } from 'config/configSchema';
 import {
   getLocaleCategoryLabel,
@@ -35,10 +49,9 @@ import {
 } from 'localisation/translations';
 import { VideoCategory } from '../types/VideoCategory';
 import { setConfigValue } from './useSettings';
-import { getCategoryIndex } from './rendererutils';
+import { getCategoryIndex, isFFXIVCategory } from './rendererutils';
 import Menu from './components/Menu';
 import Separator from './components/Separator/Separator';
-import LogsButton from './LogButton';
 import TestButton from './TestButton';
 import DiscordButton from './DiscordButton';
 import ApplicationStatusCard from './containers/ApplicationStatusCard/ApplicationStatusCard';
@@ -46,24 +59,37 @@ import { ScrollArea } from './components/ScrollArea/ScrollArea';
 import UpdateNotifier from './containers/UpdateNotifier/UpdateNotifier';
 import CloudStatusCard from './containers/ApplicationStatusCard/CloudStatusCard';
 import { Phrase } from 'localisation/phrases';
+import PatreonButton from './PatreonButton';
+import { Button } from './components/Button/Button';
+import { Tooltip } from './components/Tooltip/Tooltip';
+import DiagnosticsDialog from './DiagnosticsDialog';
+
+const ipc = window.electron.ipcRenderer;
 
 interface IProps {
   recorderStatus: RecStatus;
   videoCounters: Record<VideoCategory, number>;
   appState: AppState;
   setAppState: React.Dispatch<React.SetStateAction<AppState>>;
-  persistentProgress: MutableRefObject<number>;
+  persistentProgress: RefObject<number>;
   error: string;
   micStatus: MicStatus;
   errorReports: ErrorReport[];
   savingStatus: SaveStatus;
   config: ConfigurationSchema;
   updateAvailable: boolean;
+  recorderCategory: VideoCategory | undefined;
+  activityStatus: ActivityStatus | null;
+  combatLoggingStatus: CombatLoggingStatus;
+  setPreviewEnabled: Dispatch<SetStateAction<boolean>>;
+  instantReplayState: InstantReplayState;
+  setInstantReplayState: Dispatch<SetStateAction<InstantReplayState>>;
 }
 
 const SideMenu = (props: IProps) => {
   const {
     recorderStatus,
+    recorderCategory,
     videoCounters,
     appState,
     setAppState,
@@ -74,10 +100,16 @@ const SideMenu = (props: IProps) => {
     savingStatus,
     config,
     updateAvailable,
+    activityStatus,
+    combatLoggingStatus,
+    setPreviewEnabled,
+    instantReplayState,
+    setInstantReplayState,
   } = props;
 
   const [appVersion, setAppVersion] = useState<string>();
-  const { category } = appState;
+  const { category, language } = appState;
+  const lastManualStartStopClickRef = useRef(0);
 
   useEffect(() => {
     window.electron.ipcRenderer.on('updateVersionDisplay', (t: unknown) => {
@@ -87,6 +119,59 @@ const SideMenu = (props: IProps) => {
     });
   }, []);
 
+  useEffect(() => {
+    // If the recording status changes, reset the last manual start/stop click time.
+    lastManualStartStopClickRef.current = 0;
+  }, [recorderStatus]);
+
+  const renderManualStopStartButton = () => {
+    const recordingOrReady =
+      recorderStatus !== RecStatus.Recording &&
+      recorderStatus !== RecStatus.ReadyToRecord;
+
+    const recordingNonManual =
+      recorderCategory && recorderCategory !== VideoCategory.Manual;
+
+    const disabled =
+      !config.manualRecord || // Disable the buttons if manual recording is disabled.
+      recordingOrReady || // Disable if not recording or ready to record.
+      recordingNonManual; // If recording something else don't show the stop button.
+
+    if (disabled) {
+      return <></>;
+    }
+
+    let icon = <Play size={14} fill="currentColor" />;
+    let tooltip = getLocalePhrase(language, Phrase.StartManualRecordingTooltip);
+
+    if (recorderStatus === RecStatus.Recording) {
+      icon = <Square size={14} fill="currentColor" />;
+      tooltip = getLocalePhrase(language, Phrase.StopManualRecordingTooltip);
+    }
+
+    return (
+      <Tooltip content={tooltip}>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="mx-2 p-1 h-6 w-6 hover:bg-secondary"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            // Drops spam clicks, only let one click per second.
+            // Gets reset on recorder status change.
+            const now = Date.now();
+            if (now - lastManualStartStopClickRef.current < 1000) return;
+            lastManualStartStopClickRef.current = now;
+            ipc.toggleManualRecording();
+          }}
+        >
+          {icon}
+        </Button>
+      </Tooltip>
+    );
+  };
+
   const renderCategoryTab = (
     tabCategory: VideoCategory,
     tabIcon: string | React.ReactNode,
@@ -94,16 +179,20 @@ const SideMenu = (props: IProps) => {
     const numTotalVideos = Object.values(videoCounters).reduce((t, v) => t + v);
     const numCategoryVideos = videoCounters[tabCategory];
 
+    const forceShowManual =
+      tabCategory === VideoCategory.Manual && config.manualRecord;
+
     if (
       config.hideEmptyCategories && // Hide empty categories is enabled.
       numTotalVideos > 0 && // Only hide categories if there are atleast some videos.
+      !forceShowManual && // Always show manual if manual recording is enabled, it has buttons on it.
       numCategoryVideos < 1 // If this category has no videos, so hide it.
     ) {
       return <></>;
     }
 
     return (
-      <Menu.Item value={tabCategory} className="py-1.5">
+      <Menu.Item value={tabCategory} className="py-[4px]">
         <Menu.Item.Icon>
           {typeof tabIcon === 'string' ? (
             <img
@@ -117,7 +206,8 @@ const SideMenu = (props: IProps) => {
             tabIcon
           )}
         </Menu.Item.Icon>
-        {getLocaleCategoryLabel(appState.language, tabCategory)}
+        {getLocaleCategoryLabel(language, tabCategory)}
+        {tabCategory === VideoCategory.Manual && renderManualStopStartButton()}
         <Menu.Item.Badge value={numCategoryVideos} />
       </Menu.Item>
     );
@@ -125,46 +215,69 @@ const SideMenu = (props: IProps) => {
 
   const renderSettingsTab = () => {
     return (
-      <Menu.Item value={Pages.Settings} className="py-1.5">
+      <Menu.Item value={Pages.Settings} className="py-[4px]">
         <Menu.Item.Icon>
           <Cog />
         </Menu.Item.Icon>
-        {getLocalePhrase(appState.language, Phrase.GeneralButtonText)}
+        {getLocalePhrase(language, Phrase.GeneralButtonText)}
       </Menu.Item>
     );
   };
 
   const renderSceneTab = () => {
     return (
-      <Menu.Item value={Pages.SceneEditor} className="py-1.5">
+      <Menu.Item value={Pages.SceneEditor} className="py-[4px]">
         <Menu.Item.Icon>
           <MonitorCog />
         </Menu.Item.Icon>
-        {getLocalePhrase(appState.language, Phrase.SceneButtonText)}
+        {getLocalePhrase(language, Phrase.SceneButtonText)}
       </Menu.Item>
     );
   };
 
-  const handleWoWChangeCategory = (newCategory: VideoCategory) => {
-    const index = getCategoryIndex(newCategory);
-    setConfigValue('selectedCategory', index);
-    persistentProgress.current = 0;
+  const renderInstantReplayTab = () => {
+    const disabled = !(
+      instantReplayState.current || appState.page === Pages.InstantReplay
+    );
 
-    setAppState((prevState) => {
-      return {
-        ...prevState,
-        videoFilterTags: [],
-        page: Pages.WoW,
-        category: newCategory,
-        selectedVideos: [],
-        multiPlayerMode: false,
-        playing: false,
-      };
-    });
+    let spanClassName = 'inline-flex items-center w-full';
+    let radioClassName = '';
+    let textClassName = 'font-semibold';
+
+    if (!disabled) {
+      spanClassName += ' animate-pulse';
+      radioClassName = 'text-[#bb4420]';
+      textClassName += ' text-[#bb4420]';
+      textClassName += ' drop-shadow-[0_0_6px_rgba(187,68,32,0.35)]';
+    }
+
+    const tooltip = disabled
+      ? getLocalePhrase(language, Phrase.InstantReplayDisabled)
+      : getLocalePhrase(language, Phrase.InstantReplayLabel);
+
+    return (
+      <Menu.Item
+        value={Pages.InstantReplay}
+        className="py-[4px] my-2"
+        disabled={disabled}
+      >
+        <Tooltip content={tooltip}>
+          <span className={spanClassName}>
+            <Menu.Item.Icon>
+              <Radio className={radioClassName} />
+            </Menu.Item.Icon>
+
+            <span className={textClassName}>
+              {getLocalePhrase(language, Phrase.InstantReplayLabel)}
+            </span>
+          </span>
+        </Tooltip>
+      </Menu.Item>
+    );
   };
 
-  const handleFFXIVChangeCategory = (newCategory: VideoCategory) => {
-    const index = getCategoryIndex(newCategory);
+  const handleChangeCategory = (value: VideoCategory) => {
+    const index = getCategoryIndex(value);
     setConfigValue('selectedCategory', index);
     persistentProgress.current = 0;
 
@@ -172,8 +285,8 @@ const SideMenu = (props: IProps) => {
       return {
         ...prevState,
         videoFilterTags: [],
-        page: Pages.FFXIV,
-        category: newCategory,
+        page: Pages.None,
+        category: value,
         selectedVideos: [],
         multiPlayerMode: false,
         playing: false,
@@ -182,6 +295,20 @@ const SideMenu = (props: IProps) => {
   };
 
   const handleChangePage = (newPage: Pages) => {
+    persistentProgress.current = 0;
+
+    if (
+      newPage === Pages.InstantReplay &&
+      appState.page !== Pages.InstantReplay
+    ) {
+      setInstantReplayState((prev) => {
+        return {
+          ...prev,
+          open: prev.current,
+        };
+      });
+    }
+
     setAppState((prevState) => {
       return {
         ...prevState,
@@ -190,59 +317,78 @@ const SideMenu = (props: IProps) => {
     });
   };
 
+  const mythicPlusIcon = <FontAwesomeIcon icon={faDungeon} size="xl" />;
+  const raidsIcon = <FontAwesomeIcon icon={faDragon} size="lg" />;
+
   return (
     <div className="flex flex-col h-full bg-background w-80 px-4 items-center pt-4 pb-2">
       <ApplicationStatusCard
         recorderStatus={recorderStatus}
+        activityStatus={activityStatus}
         error={error}
         micStatus={micStatus}
         errorReports={errorReports}
         savingStatus={savingStatus}
         config={config}
         appState={appState}
+        combatLoggingStatus={combatLoggingStatus}
+        setPreviewEnabled={setPreviewEnabled}
       />
-      <CloudStatusCard appState={appState} />
-      <Separator className="mb-4" />
+      <CloudStatusCard
+        appState={appState}
+        setPreviewEnabled={setPreviewEnabled}
+      />
+
       <ScrollArea
         className="w-full h-[calc(100%-80px)]"
         withScrollIndicators={false}
       >
+        <>
+          <Separator />
+          <Menu
+            initialValue={
+              appState.page === Pages.InstantReplay ? appState.page : false
+            }
+            onChange={handleChangePage}
+          >
+            {renderInstantReplayTab()}
+          </Menu>
+        </>
+
         <Menu
-          initialValue={appState.page === Pages.WoW ? category : false}
-          onChange={handleWoWChangeCategory}
+          initialValue={
+            appState.page === Pages.None && !isFFXIVCategory(category)
+              ? category
+              : false
+          }
+          onChange={handleChangeCategory}
         >
+          <Separator className="mb-4" />
           <Menu.Label>
-            {getLocalePhrase(appState.language, Phrase.RecordingsHeading)}
+            {getLocalePhrase(language, Phrase.RecordingsHeading)}
           </Menu.Label>
           {renderCategoryTab(VideoCategory.TwoVTwo, <Dice2 />)}
           {renderCategoryTab(VideoCategory.ThreeVThree, <Dice3 />)}
           {renderCategoryTab(VideoCategory.FiveVFive, <Dice5 />)}
           {renderCategoryTab(VideoCategory.Skirmish, <Sword />)}
           {renderCategoryTab(VideoCategory.SoloShuffle, <Swords />)}
-          {renderCategoryTab(
-            VideoCategory.MythicPlus,
-            <FontAwesomeIcon icon={faDungeon} size="xl" />,
-          )}
-          {renderCategoryTab(
-            VideoCategory.Raids,
-            <FontAwesomeIcon icon={faDragon} size="lg" />,
-          )}
+          {renderCategoryTab(VideoCategory.MythicPlus, mythicPlusIcon)}
+          {renderCategoryTab(VideoCategory.Raids, raidsIcon)}
           {renderCategoryTab(VideoCategory.Battlegrounds, <Goal />)}
           {renderCategoryTab(VideoCategory.Manual, <HardHat />)}
           {renderCategoryTab(VideoCategory.Clips, <Clapperboard />)}
         </Menu>
-      </ScrollArea>
-      <Separator className="mb-4" />
-      <ScrollArea
-        className="w-full h-[calc(100%-80px)]"
-        withScrollIndicators={false}
-      >
+        <Separator className="my-5" />
         <Menu
-          initialValue={appState.page === Pages.FFXIV ? category : false}
-          onChange={handleFFXIVChangeCategory}
+          initialValue={
+            appState.page === Pages.None && isFFXIVCategory(category)
+              ? category
+              : false
+          }
+          onChange={handleChangeCategory}
         >
           <Menu.Label>
-            {getLocalePhrase(appState.language, Phrase.FFXIVRecordingsHeading)}
+            {getLocalePhrase(language, Phrase.FFXIVRecordingsHeading)}
           </Menu.Label>
           {renderCategoryTab(
             VideoCategory.FFXIVDungeons,
@@ -270,22 +416,18 @@ const SideMenu = (props: IProps) => {
             <FontAwesomeIcon icon={faSpaghettiMonsterFlying} size="xl" />,
           )}
         </Menu>
-      </ScrollArea>
-      <Separator className="mb-4" />
-      <ScrollArea
-        className="w-full h-[calc(100%-500px)]"
-        withScrollIndicators={false}
-      >
+        <Separator className="my-5" />
         <Menu
           initialValue={
-            ![Pages.None, Pages.WoW, Pages.FFXIV].includes(appState.page)
+            appState.page === Pages.Settings ||
+            appState.page === Pages.SceneEditor
               ? appState.page
               : false
           }
           onChange={handleChangePage}
         >
           <Menu.Label>
-            {getLocalePhrase(appState.language, Phrase.SettingsHeading)}
+            {getLocalePhrase(language, Phrase.SettingsHeading)}
           </Menu.Label>
           {renderSettingsTab()}
           {renderSceneTab()}
@@ -298,13 +440,21 @@ const SideMenu = (props: IProps) => {
             updateAvailable={updateAvailable}
             appState={appState}
           />
-          <LogsButton appState={appState} />
+          <DiagnosticsDialog
+            appState={appState}
+            setPreviewEnabled={setPreviewEnabled}
+          >
+            <Button variant="ghost" size="icon">
+              <FileText size={20} />
+            </Button>
+          </DiagnosticsDialog>
           <TestButton recorderStatus={recorderStatus} appState={appState} />
           <DiscordButton appState={appState} />
+          <PatreonButton appState={appState} />
         </div>
         {!!appVersion && (
           <div className="w-full mt-1 text-foreground font-sans text-[11px] font-bold text-center opacity-75">
-            {getLocalePhrase(appState.language, Phrase.Version)} {appVersion}
+            {getLocalePhrase(language, Phrase.Version)} {appVersion}
           </div>
         )}
       </div>

@@ -11,6 +11,10 @@ import {
   CloudStatus,
   DiskStatus,
   StorageFilter,
+  ActivityStatus,
+  CombatLoggingStatus,
+  InstantReplayState,
+  InstantReplayData,
 } from 'main/types';
 import Box from '@mui/material/Box';
 import { getLocalePhrase, Language } from 'localisation/translations';
@@ -29,12 +33,16 @@ import SideMenu from './SideMenu';
 import { useToast } from './components/Toast/useToast';
 import { Button } from './components/Button/Button';
 import { ErrorBoundary } from 'react-error-boundary';
-import { RefreshCcw } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import { VideoCategory } from 'types/VideoCategory';
 import { Phrase } from 'localisation/phrases';
 import _ from 'lodash';
+import { playAudio } from './sounds';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import KillVideoProgress from './KillVideoProgress';
 
 const ipc = window.electron.ipcRenderer;
+const queryClient = new QueryClient();
 
 const WarcraftRecorder = () => {
   const [config, setConfig] = useSettings();
@@ -43,9 +51,22 @@ const WarcraftRecorder = () => {
   const [errorReports, setErrorReports] = useState<ErrorReport[]>([]);
   const updateNotified = useRef(false);
   const { toast } = useToast();
+  const [combatLoggingStatus, setCombatLoggingStatus] =
+    useState<CombatLoggingStatus>({
+      retail: { advanced: true, latestLogAgeMs: -1 },
+      classic: { advanced: true, latestLogAgeMs: -1 },
+      era: { advanced: true, latestLogAgeMs: -1 },
+      retailPtr: { advanced: true, latestLogAgeMs: -1 },
+      classicPtr: { advanced: true, latestLogAgeMs: -1 },
+    });
+  const [previewEnabled, setPreviewEnabled] = useState(true);
 
   const [recorderStatus, setRecorderStatus] = useState<RecStatus>(
     RecStatus.WaitingForWoW,
+  );
+
+  const [activityStatus, setActivityStatus] = useState<ActivityStatus | null>(
+    null,
   );
 
   const [savingStatus, setSavingStatus] = useState<SaveStatus>(
@@ -95,58 +116,30 @@ const WarcraftRecorder = () => {
       del: false,
       usage: 0,
       limit: 0,
+      migrated: false,
     },
 
     // The disk storage status.
     diskStatus: { usage: 0, limit: 0 },
 
-    // Displayed on the cloud status card and used to hide
-    // some cloud settings if in the middle of an upload or download.
-    uploadProgress: 0,
-    downloadProgress: 0,
-    queuedUploads: 0,
-    queuedDownloads: 0,
+    // The chat panel state.
+    chatOpen: false,
+
+    // The preferred viewpoint for activities with multiple viewpoints.
+    // This is updated when a user switches viewpoint to in the viewpoint
+    // selector to remember their preference when changing rows in the table.
+    preferredViewpoint: '',
   });
-
-  useEffect(() => {
-    ipc.on('updateUploadProgress', (progress) => {
-      setAppState((prevState) => ({
-        ...prevState,
-        uploadProgress: progress as number,
-      }));
-    });
-
-    ipc.on('updateDownloadProgress', (progress) => {
-      setAppState((prevState) => ({
-        ...prevState,
-        downloadProgress: progress as number,
-      }));
-    });
-
-    ipc.on('updateDownloadQueueLength', (queued) => {
-      setAppState((prevState) => ({
-        ...prevState,
-        queuedDownloads: queued as number,
-      }));
-    });
-
-    ipc.on('updateUploadQueueLength', (queued) => {
-      setAppState((prevState) => ({
-        ...prevState,
-        queuedUploads: queued as number,
-      }));
-    });
-
-    return () => {
-      ipc.removeAllListeners('updateUploadProgress');
-      ipc.removeAllListeners('updateDownloadProgress');
-      ipc.removeAllListeners('updateDownloadQueueLength');
-      ipc.removeAllListeners('updateUploadQueueLength');
-    };
-  }, []);
 
   // The video state contains most of the frontend state.
   const [videoState, setVideoState] = useState<RendererVideo[]>([]);
+
+  // Fragmented MP4 path.
+  const [instantReplayState, setInstantReplayState] =
+    useState<InstantReplayState>({
+      current: null,
+      open: null,
+    });
 
   // The counters for display on the side menu. It's convient to keep these
   // seperate to the video state so we can apply filtering without changing the
@@ -197,6 +190,10 @@ const WarcraftRecorder = () => {
     if (status === RecStatus.InvalidConfig || status === RecStatus.FatalError) {
       setError(err as string);
     }
+  };
+
+  const updateActivityStatus = (status: unknown) => {
+    setActivityStatus(status as ActivityStatus);
   };
 
   const updateSaveStatus = (status: unknown) => {
@@ -282,9 +279,8 @@ const WarcraftRecorder = () => {
     updateNotified.current = true;
   };
 
-  const playAudio = (file: unknown) => {
-    console.log('Play audio', file);
-    new Audio(file as string).play();
+  const updateCombatLoggingStatus = (status: unknown) => {
+    setCombatLoggingStatus(status as CombatLoggingStatus);
   };
 
   const setCloudVideos = (videos: unknown) => {
@@ -367,19 +363,16 @@ const WarcraftRecorder = () => {
   const displayProtectCloudVideos = (videoNames: unknown) => {
     const names = videoNames as string[];
 
-    setVideoState((prev) => {
-      const matches = prev.filter(
-        (rv) => rv.cloud && names.includes(rv.videoName),
-      );
+    setVideoState((prev) =>
+      prev.map((rv) => {
+        if (!rv.cloud || !names.includes(rv.videoName)) {
+          return rv;
+        }
 
-      matches.forEach((match) => {
         // Pretty sure only one of these matters.
-        match.protected = true;
-        match.isProtected = true;
-      });
-
-      return prev;
-    });
+        return { ...rv, protected: true, isProtected: true };
+      }),
+    );
 
     setAppState((prevState) => {
       return {
@@ -394,19 +387,16 @@ const WarcraftRecorder = () => {
   const displayUnprotectCloudVideos = (videoNames: unknown) => {
     const names = videoNames as string[];
 
-    setVideoState((prev) => {
-      const matches = prev.filter(
-        (rv) => rv.cloud && names.includes(rv.videoName),
-      );
+    setVideoState((prev) =>
+      prev.map((rv) => {
+        if (!rv.cloud || !names.includes(rv.videoName)) {
+          return rv;
+        }
 
-      matches.forEach((match) => {
         // Pretty sure only one of these matters.
-        match.protected = false;
-        match.isProtected = false;
-      });
-
-      return prev;
-    });
+        return { ...rv, protected: false, isProtected: false };
+      }),
+    );
 
     setAppState((prevState) => {
       return {
@@ -421,15 +411,15 @@ const WarcraftRecorder = () => {
   const displayTagCloudVideo = (videoName: unknown, tag: unknown) => {
     const name = videoName as string;
 
-    setVideoState((prev) => {
-      const match = prev.find((rv) => rv.cloud && videoMatchName(rv, name));
+    setVideoState((prev) =>
+      prev.map((rv) => {
+        if (!rv.cloud || !videoMatchName(rv, name)) {
+          return rv;
+        }
 
-      if (match) {
-        match.tag = tag as string;
-      }
-
-      return prev;
-    });
+        return { ...rv, tag: tag as string };
+      }),
+    );
 
     setAppState((prevState) => {
       return {
@@ -441,8 +431,25 @@ const WarcraftRecorder = () => {
     });
   };
 
+  const updateInstantReplayState = (value: unknown) => {
+    setInstantReplayState((prev) => {
+      const incoming = value as InstantReplayData | null;
+
+      if (!incoming) {
+        return { ...prev, current: null };
+      }
+
+      if (prev.open && incoming.path === prev.open.path) {
+        return { open: incoming, current: incoming };
+      }
+
+      return { ...prev, current: incoming };
+    });
+  };
+
   useEffect(() => {
     ipc.on('updateRecStatus', updateRecStatus);
+    ipc.on('updateActivityStatus', updateActivityStatus);
     ipc.on('updateSaveStatus', updateSaveStatus);
     ipc.on('updateMicStatus', updateMicStatus);
     ipc.on('updateErrorReport', updateErrorReports);
@@ -457,9 +464,12 @@ const WarcraftRecorder = () => {
     ipc.on('displayProtectCloudVideos', displayProtectCloudVideos);
     ipc.on('displayUnprotectCloudVideos', displayUnprotectCloudVideos);
     ipc.on('displayTagCloudVideo', displayTagCloudVideo);
+    ipc.on('updateCombatLoggingStatus', updateCombatLoggingStatus);
+    ipc.on('updateInstantReplayState', updateInstantReplayState);
 
     return () => {
       ipc.removeAllListeners('updateRecStatus');
+      ipc.removeAllListeners('updateActivityStatus');
       ipc.removeAllListeners('updateSaveStatus');
       ipc.removeAllListeners('updateMicStatus');
       ipc.removeAllListeners('updateErrorReport');
@@ -474,6 +484,8 @@ const WarcraftRecorder = () => {
       ipc.removeAllListeners('displayProtectCloudVideos');
       ipc.removeAllListeners('displayUnprotectCloudVideos');
       ipc.removeAllListeners('displayTagCloudVideo');
+      ipc.removeAllListeners('updateCombatLoggingStatus');
+      ipc.removeAllListeners('updateInstantReplayState');
     };
   }, []);
 
@@ -489,35 +501,49 @@ const WarcraftRecorder = () => {
         }}
       >
         <Toaster />
-        <TooltipProvider>
-          <RendererTitleBar />
-          <div className="flex flex-row items-center h-full w-full font-sans">
-            <SideMenu
-              recorderStatus={recorderStatus}
-              videoCounters={videoCounters}
-              appState={appState}
-              setAppState={setAppState}
-              persistentProgress={persistentProgress}
-              error={error}
-              micStatus={micStatus}
-              errorReports={errorReports}
-              savingStatus={savingStatus}
-              config={config}
-              updateAvailable={updateAvailable}
-            />
-            <Layout
-              recorderStatus={recorderStatus}
-              videoState={videoState}
-              setVideoState={setVideoState}
-              appState={appState}
-              setAppState={setAppState}
-              persistentProgress={persistentProgress}
-              playerHeight={playerHeight}
-              config={config}
-              setConfig={setConfig}
-            />
-          </div>
-        </TooltipProvider>
+        <KillVideoProgress language={appState.language} />
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider>
+            <RendererTitleBar />
+            <div className="flex flex-row items-center h-full w-full font-sans">
+              <SideMenu
+                recorderStatus={recorderStatus}
+                videoCounters={videoCounters}
+                appState={appState}
+                setAppState={setAppState}
+                persistentProgress={persistentProgress}
+                error={error}
+                micStatus={micStatus}
+                errorReports={errorReports}
+                savingStatus={savingStatus}
+                config={config}
+                updateAvailable={updateAvailable}
+                recorderCategory={activityStatus?.category}
+                activityStatus={activityStatus}
+                combatLoggingStatus={combatLoggingStatus}
+                setPreviewEnabled={setPreviewEnabled}
+                instantReplayState={instantReplayState}
+                setInstantReplayState={setInstantReplayState}
+              />
+              <Layout
+                recorderStatus={recorderStatus}
+                videoState={videoState}
+                setVideoState={setVideoState}
+                appState={appState}
+                setAppState={setAppState}
+                persistentProgress={persistentProgress}
+                playerHeight={playerHeight}
+                config={config}
+                setConfig={setConfig}
+                combatLoggingStatus={combatLoggingStatus}
+                previewEnabled={previewEnabled}
+                setPreviewEnabled={setPreviewEnabled}
+                instantReplayState={instantReplayState}
+                setInstantReplayState={setInstantReplayState}
+              />
+            </div>
+          </TooltipProvider>
+        </QueryClientProvider>
       </Box>
     </ErrorBoundary>
   );
@@ -533,7 +559,7 @@ const renderErrorPage = () => {
         You hit a bug in the code. Please try refreshing.
       </h2>
       <Button className="m-2" onClick={() => window.location.reload()}>
-        <RefreshCcw />
+        <RotateCcw />
       </Button>
     </div>
   );

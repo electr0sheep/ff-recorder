@@ -36,12 +36,17 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
       return;
     }
 
-    setConfigValues({
+    const toSet: Record<string, unknown> = {
       storagePath: config.storagePath,
       bufferStoragePath: config.bufferStoragePath,
       separateBufferPath: config.separateBufferPath,
-      maxStorage: config.maxStorage,
-    });
+    };
+
+    if (config.maxStorage >= 0) {
+      toSet.maxStorage = config.maxStorage;
+    }
+
+    setConfigValues(toSet);
 
     if (debounceTimeout) {
       clearTimeout(debounceTimeout);
@@ -106,7 +111,7 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
     }
 
     return (
-      <div className="flex flex-col">
+      <div className="flex flex-col w-[500px]">
         <Label htmlFor="storagePath" className="flex items-center">
           {getLocalePhrase(language, Phrase.DiskStorageFolderLabel)}
           <Tooltip
@@ -221,6 +226,12 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
   };
 
   const setMaxStorage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!event.target.value) {
+      // Allow setting empty as midpoint.
+      setConfig((prev) => ({ ...prev, maxStorage: -1 }));
+      return;
+    }
+
     const maxStorage = parseInt(event.target.value, 10);
 
     if (Number.isNaN(maxStorage) || maxStorage < 0) {
@@ -242,7 +253,7 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
     }
 
     return (
-      <div className="flex flex-col w-1/3 min-w-60 max-w-80">
+      <div className="flex flex-col w-40">
         <Label htmlFor="maxDiskStorage" className="flex items-center">
           {getLocalePhrase(language, Phrase.MaxDiskStorageLabel)}
           <Tooltip
@@ -257,7 +268,7 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
         </Label>
         <Input
           name="maxDiskStorage"
-          value={config.maxStorage}
+          value={config.maxStorage >= 0 ? config.maxStorage : ''}
           onChange={setMaxStorage}
           required
           type="numeric"
@@ -280,7 +291,7 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
           {getLocalePhrase(language, Phrase.DiskUsageDescription)}
         </Label>
 
-        <div className="flex flex-row items-center justify-start w-1/3 min-w-80 max-w-120 gap-x-2">
+        <div className="flex flex-row items-center justify-start w-80 gap-x-2 py-2">
           <Tooltip
             content={getLocalePhrase(language, Phrase.DiskUsageDescription)}
           >
@@ -298,13 +309,17 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
   return (
     <div className="flex flex-col gap-y-6">
       {getDisabledText()}
-      <div className="flex flex-row gap-x-6">
-        {getStoragePathField()}
-        {getBufferSwitch()}
+      {getStoragePathField()}
+
+      <div className="flex flex-row items-center gap-x-10">
+        {getMaxStorageField()}
+        {getDiskUsageBar()}
       </div>
-      {getBufferPathField()}
-      {getMaxStorageField()}
-      {getDiskUsageBar()}
+
+      <div className="flex flex-row items-center gap-x-10">
+        {getBufferSwitch()}
+        {getBufferPathField()}
+      </div>
     </div>
   );
 };

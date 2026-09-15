@@ -1,6 +1,11 @@
 import { URL } from 'url';
 import path from 'path';
-import fs, { promises as fspromise } from 'fs';
+import fs, {
+  createReadStream,
+  existsSync,
+  promises as fspromise,
+  Stats,
+} from 'fs';
 import { app, Display, screen } from 'electron';
 import {
   EventType,
@@ -19,11 +24,30 @@ import {
   ObsAudioConfig,
   ErrorReport,
   CloudSignedMetadata,
+  KillVideoSegment,
+  ActivityStatus,
+  InstantReplayData,
 } from './types';
 import { VideoCategory } from '../types/VideoCategory';
 import ConfigService from 'config/ConfigService';
 import { AxiosError } from 'axios';
 import { send } from './main';
+import { Readable } from 'stream';
+import { ESupportedEncoders } from './obsEnums';
+import Recorder from './Recorder';
+import { exec, execFile } from 'child_process';
+import { specializationById, wowInstallSearchPaths } from './constants';
+import {
+  getPlayerName,
+  getPlayerSpecID,
+  secToMmSs,
+} from 'renderer/rendererutils';
+import { ZipArchive } from 'archiver';
+import ChallengeModeDungeon from 'activitys/ChallengeModeDungeon';
+import Activity from 'activitys/Activity';
+import SoloShuffle from 'activitys/SoloShuffle';
+import FFXIVDungeon from 'activitys/FFXIVDungeon';
+import semver from 'semver';
 
 /**
  * When packaged, we need to fix some paths
@@ -49,8 +73,6 @@ const setupApplicationLogging = () => {
   Object.assign(console, log.functions);
   return path.dirname(logPath);
 };
-
-const { exec } = require('child_process');
 
 const getResolvedHtmlPath = () => {
   if (process.env.NODE_ENV === 'development') {
@@ -280,12 +302,12 @@ const loadVideoDetailsDisk = async (
  * Writes video metadata asynchronously and returns a Promise
  */
 const writeMetadataFile = async (videoPath: string, metadata: Metadata) => {
-  console.info('[Util] Write Metadata file', videoPath);
+  console.info('[Util] Write Metadata file for video:', videoPath);
 
   const metadataFileName = getMetadataFileNameForVideo(videoPath);
   const jsonString = JSON.stringify(metadata, null, 2);
 
-  fspromise.writeFile(metadataFileName, jsonString, {
+  await fspromise.writeFile(metadataFileName, jsonString, {
     encoding: 'utf-8',
   });
 };
@@ -404,6 +426,38 @@ const getWowFlavour = (pathSpec: string): string => {
 };
 
 /**
+ * Check if advanced combat logging is enabled in the Config.wtf file for the given log path.
+ */
+const getConfigWtfPath = (logPath: string): string => {
+  return path.normalize(path.join(logPath, '../WTF/Config.wtf'));
+};
+
+const checkAdvancedCombatLogging = async (
+  logPath: string,
+): Promise<boolean> => {
+  const configWtfFile = getConfigWtfPath(logPath);
+
+  if (!(await exists(configWtfFile))) {
+    console.warn('[Util] Config.wtf not found at', configWtfFile);
+    return false;
+  }
+
+  try {
+    const content = (await fs.promises.readFile(configWtfFile)).toString();
+    const match = content.match(/^SET advancedCombatLogging\s+"(\d+)"/m);
+
+    if (match && match[1] === '1') {
+      return true;
+    }
+
+    return false;
+  } catch {
+    console.warn('[Util] Failed to read Config.wtf at', configWtfFile);
+    return true;
+  }
+};
+
+/**
  * Adds an error to the error report component.
  */
 const emitErrorReport = (data: unknown) => {
@@ -435,18 +489,17 @@ const isPushToTalkHotkey = (
     return buttonMatch;
   }
 
-  let modifierMatch = true;
-
   // Deliberately permissive here, we check all the modifiers we have in
   // config are met but we don't enforce the inverse, i.e. we'll accept
   // an additional modifier present (so CTRL + SHIFT + E will trigger
   // a CTRL + E hotkey).
-  pushToTalkModifiers.split(',').forEach((mod) => {
-    if (mod === 'alt') modifierMatch = altKey;
-    if (mod === 'ctrl') modifierMatch = ctrlKey;
-    if (mod === 'shift') modifierMatch = shiftKey;
-    if (mod === 'win') modifierMatch = metaKey;
-  });
+  const modifierMatch = pushToTalkModifiers.split(',').reduce((acc, mod) => {
+    if (mod === 'alt') return acc && altKey;
+    if (mod === 'ctrl') return acc && ctrlKey;
+    if (mod === 'shift') return acc && shiftKey;
+    if (mod === 'win') return acc && metaKey;
+    return acc; // Ignore unknown modifiers
+  }, true);
 
   return buttonMatch && modifierMatch;
 };
@@ -466,18 +519,20 @@ const isManualRecordHotKey = (event: UiohookKeyboardEvent) => {
   );
 
   const buttonMatch = keycode > 0 && keycode === manualRecordHotKey;
-  let modifierMatch = true;
 
   // Deliberately permissive here, we check all the modifiers we have in
   // config are met but we don't enforce the inverse, i.e. we'll accept
   // an additional modifier present (so CTRL + SHIFT + E will trigger
   // a CTRL + E hotkey).
-  manualRecordHotKeyModifiers.split(',').forEach((mod) => {
-    if (mod === 'alt') modifierMatch = altKey;
-    if (mod === 'ctrl') modifierMatch = ctrlKey;
-    if (mod === 'shift') modifierMatch = shiftKey;
-    if (mod === 'win') modifierMatch = metaKey;
-  });
+  const modifierMatch = manualRecordHotKeyModifiers
+    .split(',')
+    .reduce((acc, mod) => {
+      if (mod === 'alt') return acc && altKey;
+      if (mod === 'ctrl') return acc && ctrlKey;
+      if (mod === 'shift') return acc && shiftKey;
+      if (mod === 'win') return acc && metaKey;
+      return acc; // Ignore unknown modifiers
+    }, true);
 
   return buttonMatch && modifierMatch;
 };
@@ -583,13 +638,85 @@ const getPromiseBomb = (fuse: number, reason: string) => {
   });
 };
 
-const buildClipMetadata = (initial: Metadata, duration: number, date: Date) => {
-  const final = initial;
+const buildClipMetadata = (
+  initial: Metadata,
+  duration: number,
+  date: Date,
+  offset: number,
+  parentVideoName: string,
+) => {
+  const final = { ...initial };
   final.duration = duration;
+  // Most clip metadata is copied from the source recording; parent-prefixed
+  // fields are the trusted source navigation data added at clipping time.
   final.parentCategory = initial.category;
+  final.parentVideoName = parentVideoName;
+  final.parentVideoOffset = offset;
   final.category = VideoCategory.Clips;
   final.protected = true;
   final.clippedAt = date.getTime();
+  return final;
+};
+
+const buildKillVideoMetadata = (
+  initial: Metadata,
+  segments: KillVideoSegment[],
+) => {
+  const final = { ...initial };
+  final.duration = segments[segments.length - 1].stop;
+  final.parentCategory = initial.category;
+  final.category = VideoCategory.Clips;
+  final.protected = true;
+  final.clippedAt = Date.now();
+  final.tag = `Multipov Kill Video\n`;
+
+  // Build a tag for the video like this:
+  //
+  //   Multipov Kill Video
+  //   Created by WCR at: 2025-10-29 20-38-50
+  //   A YouTube compatible description timeline is below.
+  //
+  //   00:00 - Imprvedziniq (Destruction)
+  //   01:06 - Visk (Arcane)
+  //   02:12 - Phrixosdk (Frost)
+  //   03:18 - Titzy (Elemental)
+  //   04:24 - Alextides (Restoration)
+  //   05:29 - Catza (Restoration)
+  //   06:35 - Meraned (Beast Mastery)
+  //   07:41 - Rubiscodrage (Devastation)
+
+  if (initial.start) {
+    // All modern videos have this. It is possible legacy videos might not.
+    final.tag += `Created by WCR at: ${getOBSFormattedDate(new Date(initial.start))}\n`;
+  }
+
+  final.tag += `A YouTube compatible description timeline is below.\n`;
+
+  segments.forEach((segment) => {
+    let playerName = getPlayerName(segment.video);
+    const playerSpecID = getPlayerSpecID(segment.video);
+
+    if (!playerName) {
+      // Should basically never happen but guard for it anyway.
+      playerName = 'Unknown';
+    }
+
+    const spec =
+      playerSpecID < 1 ? 'Unknown' : specializationById[playerSpecID].name;
+
+    final.tag += '\n';
+    final.tag += `${secToMmSs(segment.start)} - ${playerName} (${spec})`;
+  });
+
+  final.player = {
+    _GUID: 'WCR MultiPov GUID',
+    _teamID: -1,
+    _specID: -1,
+    _name: 'WCR Multipov Name',
+    _realm: 'WCR Multipov Realm',
+    _region: 'WCR Multipov Region',
+  };
+
   return final;
 };
 
@@ -639,10 +766,63 @@ const checkDisk = async (dir: string, req: number) => {
   const reqBytes = req * 1024 ** 3 - inUseBytes;
 
   if (freeBytes < reqBytes) {
-    const msg = `Disk '${disk}' does not have enough free space, needs ${req}GB.`;
+    const msg = `Disk '${disk}' does not have enough free space, needs ${reqBytes / 1024 ** 3}GB but got ${freeBytes / 1024 ** 3}GB.`;
     console.error(`Disk check failed: ${msg}`);
     throw new Error(msg);
   }
+};
+
+const getWindowsRoot = (targetPath: string) => {
+  return path.win32.parse(path.win32.resolve(targetPath)).root;
+};
+
+const getDriveFormat = async (
+  targetPath: string,
+): Promise<string | undefined> => {
+  if (process.platform !== 'win32') {
+    return undefined;
+  }
+
+  const root = getWindowsRoot(targetPath);
+
+  return new Promise((resolve) => {
+    execFile(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        `[System.IO.DriveInfo]::new("${root}").DriveFormat`,
+      ],
+      { windowsHide: true },
+      (error, stdout, stderr) => {
+        if (error) {
+          console.warn(
+            '[Util] Failed to get drive format',
+            targetPath,
+            String(error),
+            String(stderr).trim(),
+          );
+
+          resolve(undefined);
+          return;
+        }
+
+        const driveFormat = String(stdout).trim();
+
+        if (!driveFormat) {
+          console.warn('[Util] Empty drive format returned', targetPath);
+          resolve(undefined);
+          return;
+        }
+
+        console.info('[Util] Drive format', driveFormat, 'for', targetPath);
+        resolve(driveFormat);
+      },
+    );
+  });
 };
 
 /**
@@ -839,6 +1019,7 @@ const takeOwnershipBufferDir = async (dir: string) => {
 
   const unexpected = files
     .filter((file) => !file.endsWith('.mp4'))
+    .filter((file) => !file.endsWith('.mkv'))
     .filter((file) => file !== 'managed.txt');
 
   if (unexpected.length > 0) {
@@ -853,10 +1034,10 @@ const takeOwnershipBufferDir = async (dir: string) => {
     throw new Error(`Can not take ownership of ${dir}. ${helptext}`);
   }
 
-  const regex = /^\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}.mp4$/;
+  const regex = /^\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}.(mp4|mkv)$/;
 
   files
-    .filter((file) => file.endsWith('.mp4'))
+    .filter((file) => file.endsWith('.mp4') || file.endsWith('.mkv'))
     .forEach((file) => {
       const match = regex.test(file);
 
@@ -876,10 +1057,285 @@ const takeOwnershipBufferDir = async (dir: string) => {
 const logAxiosError = (msg: string, error: AxiosError) => {
   console.error(msg, {
     message: error.message,
-    status: error.response?.status,
-    data: error.response?.data,
+    status: error.status,
+    code: error.code,
+    cause: error.cause,
     url: error.config?.url,
+    rspStatus: error.response?.status,
+    rspData: error.response?.data,
   });
+};
+
+/**
+ * Custom protocol that enables the frontend to request MP4 files from disk.
+ */
+const handleSafeVodRequest = async (request: Request) => {
+  try {
+    const sliced = request.url.toString().slice('vod://wcr/'.length);
+    const requestUrl = decodeURIComponent(sliced);
+
+    if (!requestUrl) {
+      console.error('[Util] Bad URL:', requestUrl);
+
+      return new Response('', {
+        status: 400,
+        statusText: 'Bad URL',
+      });
+    }
+
+    const filePath = Buffer.from(requestUrl)
+      .toString('utf-8')
+      .split('#')[0] // Remove any timestamps, the frontend handles those.
+      .split('?')[0]; // Instant replay uses a param as a cache buster.
+
+    if (!filePath.endsWith('.mp4')) {
+      console.error('[Util] Not an MP4 file:', filePath);
+
+      return new Response('', {
+        status: 400,
+        statusText: 'Must be MP4',
+      });
+    }
+
+    let stats: Stats;
+
+    try {
+      // This will throw if the file doesn't exist.
+      stats = await fspromise.stat(filePath);
+    } catch (err) {
+      console.error('[Util] Error stating file:', err, filePath);
+
+      return new Response('', {
+        status: 404,
+        statusText: 'File Not Found',
+      });
+    }
+
+    const fileSize = stats.size;
+    const rangeHeader = request.headers.get('Range');
+
+    if (rangeHeader) {
+      const rangeParts = rangeHeader.replace(/bytes=/, '').split('-');
+      const start = parseInt(rangeParts[0], 10);
+      const end = rangeParts[1] ? parseInt(rangeParts[1], 10) : fileSize - 1;
+
+      const chunkSize = end - start + 1;
+      const stream = createReadStream(filePath, { start, end });
+      const body = Readable.toWeb(stream);
+
+      return new Response(body as ReadableStream<Uint8Array>, {
+        status: 206,
+        statusText: 'Partial Content',
+        headers: {
+          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': chunkSize.toString(),
+          'Content-Type': 'video/mp4',
+          'Cache-Control': 'no-cache',
+        },
+      });
+    } else {
+      const stream = createReadStream(filePath);
+      const body = Readable.toWeb(stream);
+
+      return new Response(body as ReadableStream<Uint8Array>, {
+        status: 200,
+        headers: {
+          'Content-Length': fileSize.toString(),
+          'Accept-Ranges': 'bytes',
+          'Content-Type': 'video/mp4',
+          'Cache-Control': 'no-cache',
+        },
+      });
+    }
+  } catch (error) {
+    console.error('[Util] Protocol handler error:', error);
+
+    return new Response('Internal Server Error', {
+      status: 500,
+      statusText: 'Internal Server Error',
+    });
+  }
+};
+
+const runFirstTimeSetupActionsObs = () => {
+  const cfg = ConfigService.getInstance();
+
+  const defaultEncoder =
+    cfg.get<string>('obsRecEncoder') === ESupportedEncoders.OBS_X264;
+
+  if (defaultEncoder) {
+    // If this is first time setup, auto-pick an encoder for the user. Only do it
+    // if the current value is the software encoder, as this is new in 7.0.0, all
+    // users would be subject to it. This way, only the few people who really do
+    // prefer the software encoder will be inconvenienced.
+    console.info('[Util] Picking sensible OBS recorder encoder');
+    const encoder = Recorder.getInstance().getSensibleEncoderDefault();
+    cfg.set('obsRecEncoder', encoder);
+  }
+};
+
+const runFirstTimeSetupActionsNoObs = () => {
+  const cfg = ConfigService.getInstance();
+
+  const isRetailConfigured =
+    cfg.get<boolean>('recordRetail') && cfg.get<string>('retailLogPath');
+
+  if (!isRetailConfigured) {
+    console.info('[Util] Attempt to first time configure retail installation');
+
+    for (let i = 0; i < wowInstallSearchPaths.length; i++) {
+      const installPath = wowInstallSearchPaths[i] + '\\_retail_\\Logs';
+      const installExists = existsSync(installPath);
+
+      if (installExists) {
+        console.info('[Util] Found retail WoW installation at', installPath);
+        cfg.set('retailLogPath', installPath);
+        cfg.set('recordRetail', true);
+        break;
+      }
+    }
+  }
+
+  const isClassicConfigured =
+    cfg.get<boolean>('recordClassic') && cfg.get<string>('classicLogPath');
+
+  if (!isClassicConfigured) {
+    console.info('[Util] Attempt to first time configure classic installation');
+
+    for (let i = 0; i < wowInstallSearchPaths.length; i++) {
+      const installPath = wowInstallSearchPaths[i] + '\\_classic_\\Logs';
+      const installExists = existsSync(installPath);
+
+      if (installExists) {
+        console.info('[Util] Found classic WoW installation at', installPath);
+        cfg.set('classicLogPath', installPath);
+        cfg.set('recordClassic', true);
+        break;
+      }
+    }
+  }
+
+  if (!cfg.get<string>('storagePath')) {
+    console.info('[Util] Setting up default storage path');
+    const baseVideoPath = app.getPath('userData');
+
+    const initialStorageDir = path.join(
+      baseVideoPath,
+      'Warcraft Recorder Videos',
+    );
+
+    fs.mkdirSync(initialStorageDir, { recursive: true });
+    cfg.set('storagePath', initialStorageDir);
+  }
+};
+
+const createDiagsBundle = async (logPath: string): Promise<string> => {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  const timestamp =
+    `${pad(now.getDate())}-${pad(now.getMonth() + 1)}-${String(now.getFullYear()).slice(-2)}-` +
+    `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+
+  const bundleName = `wcr-diag-bundle-${timestamp}.zip`;
+  const bundlePath = path.join(logPath, bundleName);
+
+  const archive = new ZipArchive({ zlib: { level: 9 } });
+  const output = fs.createWriteStream(bundlePath);
+
+  return new Promise((resolve, reject) => {
+    output.once('close', () => {
+      console.info(
+        `[Util] Created diagnostics bundle: ${bundleName} (${archive.pointer()} bytes)`,
+      );
+      resolve(bundlePath); // <-- return path here
+    });
+
+    archive.once('error', reject);
+    output.once('error', reject);
+
+    archive.pipe(output);
+    archive.glob('**/*', { cwd: logPath, ignore: ['*.zip'] });
+    archive.finalize();
+  });
+};
+
+const resetActivityStatus = () => {
+  send('updateActivityStatus', null);
+};
+
+const pushActivityStatus = (activity: Activity) => {
+  const activityStatus: ActivityStatus = {
+    category: activity.category,
+    start: activity.startDate.getTime(),
+  };
+
+  send('updateActivityStatus', activityStatus);
+};
+
+const resetInstantReplayState = () => {
+  send('updateInstantReplayState', null);
+};
+
+const refreshInstantReplayState = (activity: Activity) => {
+  const recorder = Recorder.getInstance();
+  const instantReplayFile = recorder.instantReplayFile;
+
+  if (!instantReplayFile) {
+    resetInstantReplayState();
+    return;
+  }
+
+  const category = activity.category;
+
+  const current: InstantReplayData = {
+    path: instantReplayFile,
+    deaths: activity.deaths,
+    category,
+  };
+
+  if (category === VideoCategory.MythicPlus) {
+    const cm = activity as ChallengeModeDungeon;
+    current.challengeModeTimeline = cm.timeline.map((s) => s.getRaw());
+  } else if (category === VideoCategory.SoloShuffle) {
+    const ss = activity as SoloShuffle;
+    current.soloShuffleTimeline = ss.getTimelineSegments();
+  } else if (category === VideoCategory.FFXIVDungeons) {
+    const dungeon = activity as FFXIVDungeon;
+    current.challengeModeTimeline = dungeon.timeline.map((s) => s.getRaw());
+  }
+
+  send('updateInstantReplayState', current);
+};
+
+const getAudioTrackCount = (video: RendererVideo): number => {
+  return video.appVersion && semver.gt(video.appVersion, '7.11.1') ? 6 : 1;
+};
+
+const getMostRecentCombatLogModifiedTime = async (
+  logPath: string,
+): Promise<number> => {
+  const logFiles = await getSortedFiles(
+    logPath,
+    'WoWCombatLog.*.txt',
+    FileSortDirection.NewestFirst,
+  );
+
+  return logFiles.length > 0 ? logFiles[0].mtime : -1;
+};
+
+const startWatchingConfigWtf = (logPath: string, callback: () => void) => {
+  const configPath = getConfigWtfPath(logPath);
+
+  try {
+    const watcher = fs.watch(configPath, callback);
+    return watcher;
+  } catch (err) {
+    console.error('[Util] Failed to watch Config.wtf:', configPath, err);
+  }
+
+  return null;
 };
 
 export {
@@ -903,6 +1359,7 @@ export {
   getPromiseBomb,
   emitErrorReport,
   buildClipMetadata,
+  buildKillVideoMetadata,
   getOBSFormattedDate,
   checkDisk,
   getMetadataFileNameForVideo,
@@ -920,4 +1377,18 @@ export {
   isManualRecordHotKey,
   delayedDeleteVideo,
   logAxiosError,
+  handleSafeVodRequest,
+  runFirstTimeSetupActionsObs,
+  runFirstTimeSetupActionsNoObs,
+  checkAdvancedCombatLogging,
+  getConfigWtfPath,
+  getDriveFormat,
+  createDiagsBundle,
+  resetActivityStatus,
+  pushActivityStatus,
+  resetInstantReplayState,
+  refreshInstantReplayState,
+  getAudioTrackCount,
+  getMostRecentCombatLogModifiedTime,
+  startWatchingConfigWtf,
 };

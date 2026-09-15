@@ -1,5 +1,10 @@
 import React, { Dispatch, SetStateAction } from 'react';
-import { AppState, RecStatus } from 'main/types';
+import {
+  CombatLoggingStatus,
+  AppState,
+  RecStatus,
+  RendererVideo,
+} from 'main/types';
 import { ConfigurationSchema } from 'config/configSchema';
 import { getLocalePhrase } from 'localisation/translations';
 import GeneralSettings from './GeneralSettings';
@@ -27,6 +32,8 @@ interface IProps {
   setConfig: Dispatch<SetStateAction<ConfigurationSchema>>;
   appState: AppState;
   setAppState: React.Dispatch<React.SetStateAction<AppState>>;
+  combatLoggingStatus: CombatLoggingStatus;
+  videoState: RendererVideo[];
 }
 
 const CategoryHeading = ({ children }: { children: React.ReactNode }) => (
@@ -34,7 +41,15 @@ const CategoryHeading = ({ children }: { children: React.ReactNode }) => (
 );
 
 const SettingsPage: React.FC<IProps> = (props: IProps) => {
-  const { recorderStatus, config, setConfig, appState, setAppState } = props;
+  const {
+    recorderStatus,
+    config,
+    setConfig,
+    appState,
+    setAppState,
+    combatLoggingStatus,
+    videoState,
+  } = props;
 
   return (
     <div className="w-full h-full bg-background-higher pt-[32px] px-4">
@@ -119,6 +134,7 @@ const SettingsPage: React.FC<IProps> = (props: IProps) => {
                   config={config}
                   setConfig={setConfig}
                   appState={appState}
+                  combatLoggingStatus={combatLoggingStatus}
                 />
               </div>
               <div>
@@ -143,7 +159,11 @@ const SettingsPage: React.FC<IProps> = (props: IProps) => {
                   )}
                 </CategoryHeading>
                 <Separator className="mt-2 mb-4" />
-                <ManualSettings appState={appState} />
+                <ManualSettings
+                  appState={appState}
+                  config={config}
+                  setConfig={setConfig}
+                />
               </div>
             </div>
           </TabsContent>
@@ -178,6 +198,7 @@ const SettingsPage: React.FC<IProps> = (props: IProps) => {
                   appState={appState}
                   config={config}
                   setConfig={setConfig}
+                  videoState={videoState}
                 />
               </div>
             </div>

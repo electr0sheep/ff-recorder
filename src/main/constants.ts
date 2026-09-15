@@ -12,25 +12,25 @@ import {
  * The set of resolutions we allow users to select.
  */
 const obsResolutions = {
-  /* eslint-disable prettier/prettier */
-  '1024x768':  { width: 1024, height: 768 },
-  '1280x720':  { width: 1280, height: 720 },
-  '1280x800':  { width: 1280, height: 800 },
+  '1024x768': { width: 1024, height: 768 },
+  '1280x720': { width: 1280, height: 720 },
+  '1280x800': { width: 1280, height: 800 },
   '1280x1024': { width: 1280, height: 1024 },
-  '1360x768':  { width: 1360, height: 768 },
-  '1366x768':  { width: 1366, height: 768 },
-  '1440x900':  { width: 1440, height: 900 },
-  '1600x900':  { width: 1600, height: 900 },
+  '1360x768': { width: 1360, height: 768 },
+  '1366x768': { width: 1366, height: 768 },
+  '1440x900': { width: 1440, height: 900 },
+  '1600x900': { width: 1600, height: 900 },
   '1680x1050': { width: 1680, height: 1050 },
   '1920x1080': { width: 1920, height: 1080 },
   '1920x1200': { width: 1920, height: 1200 },
+  '2560x720': { width: 2560, height: 720 },
   '2560x1080': { width: 2560, height: 1080 },
   '2560x1440': { width: 2560, height: 1440 },
   '2560x1600': { width: 2560, height: 1600 },
   '3360x1440': { width: 3360, height: 1440 },
   '3440x1440': { width: 3440, height: 1440 },
   '3440x1200': { width: 3440, height: 1200 },
-  '3520x990':  { width: 3520, height: 990 },
+  '3520x990': { width: 3520, height: 990 },
   '3840x1080': { width: 3840, height: 1080 },
   '3840x1440': { width: 3840, height: 1440 },
   '3840x1600': { width: 3840, height: 1600 },
@@ -39,7 +39,6 @@ const obsResolutions = {
   '5120x2160': { width: 5120, height: 2160 },
   '5760x1080': { width: 5760, height: 1080 },
   '7680x2160': { width: 7680, height: 2160 },
-  /* eslint-enable prettier/prettier */
 };
 
 interface ICategoryRecordingSettings {
@@ -199,6 +198,7 @@ const retailArenas: NumberKeyToStringValueMapType = {
   2547: 'Enigma Crucible',
   2563: 'Nokhudon',
   2759: 'Cage of Carnage',
+  2923: 'Voidscar Arena', // https://github.com/BigWigsMods/BigWigs/blob/master/Loader.lua#L638
 };
 
 /**
@@ -387,15 +387,36 @@ const raidEncountersById: NumberKeyToStringValueMapType = {
  * and retail at the same time. Eventually the older tiers should be removed.
  */
 const currentRetailEncounters = [
-  // TWW Season 3
-  3129, // Plexus Sentinel
-  3131, // Loom'ithar
-  3130, // Soulbinder Naazindhri
-  3132, // Forgeweaver Araz
-  3122, // The Soul Hunters
-  3133, // Fractillus
-  3134, // Nexus-King Salhadaar
-  3135, // Dimensius, the All-Devouring
+  // Midnight - The Voidspire
+  3176, // Imperator Averzian
+  3177, // Vorsaius
+  3178, // Fallen-King Salhadar
+  3179, // Vaelgor & Ezzorak
+  3180, // Lightblinded Vanguard
+  3181, // Crown of the Cosmos
+
+  // Midnight - March on Quel'danas
+  3182, // Belo'ren, Child of Al'ar
+  3183, // Midnight Falls
+
+  // Midnight - The Dreamrift
+  3306, // Chimaerus the Undreamt God
+
+  // Midnight - Sporefall
+  3159, // Rotmire
+
+  // Midnight - The Venomous Abyss
+  3470, // Nek'zali the Soulcoiler
+  3445, // Entombed Sentinels
+  3455, // Vashnik the Malignant
+  3497, // The Lost Explorers
+  3420, // Sszorak
+  3421, // The Twin Fangs
+  3429, // The Coiled Altar
+  3492, // Ula'tek
+
+  // Midnight - The Tidebound Grotto
+  3379, // Nymrissa Wavecaller
 
   // Test Encounter
   9999, // Saves having to update the test button data.
@@ -497,7 +518,6 @@ const dungeonsByZoneId: NumberKeyToStringValueMapType = {
   2441: 'Tazavesh the Veiled Market',
 
   // Dragonflight S1
-  2521: 'Ruby Life Pools',
   2516: 'The Nokhud Offensive',
   2515: 'The Azure Vault',
   2526: "Algeth'ar Academy",
@@ -546,6 +566,27 @@ const dungeonsByZoneId: NumberKeyToStringValueMapType = {
   // TWW S3.
   // Taken from https://github.com/BigWigsMods/BigWigs/blob/master/Loader.lua#L487.
   2830: "Eco-Dome Al'Dani",
+
+  // Midnight S1.
+  // Taken from https://github.com/BigWigsMods/BigWigs/blob/master/Loader.lua#L487.
+  2805: 'Windrunner Spire',
+  2811: "Magisters' Terrace",
+  2874: 'Maisara Caverns',
+  2915: 'Nexus-Point Xenas',
+  658: 'Pit of Saron',
+  1209: 'Skyreach',
+  1753: 'Seat of the Triumvirate',
+
+  // Midnight S2.
+  // Taken from https://github.com/BigWigsMods/BigWigs/blob/master/Loader.lua#L487.
+  2521: 'Ruby Life Pools',
+  2813: 'Murder Row',
+  2825: 'Den of Nalorakk',
+  2859: 'The Blinding Vale',
+  2923: 'Voidscar Arena',
+  2993: 'Altar of Fangs',
+  1877: 'Temple of Sethraliss',
+  1762: "Kings' Rest",
 };
 
 /**
@@ -573,7 +614,6 @@ const dungeonsByMapId: NumberKeyToStringValueMapType = {
   392: 'Tazavesh: Gambit',
 
   // Dragonflight S1
-  399: 'Ruby Life Pools',
   400: 'The Nokhud Offensive',
   401: 'The Azure Vault',
   402: "Algeth'ar Academy",
@@ -602,7 +642,7 @@ const dungeonsByMapId: NumberKeyToStringValueMapType = {
   168: 'The Everbloom',
   456: 'Throne of the Tides',
 
-  // TWW S1 - taken from WoWhead, searching for "set keystone map X".
+  // TWW S1 - taken from WoWhead, searching for "set keystone map: X".
   353: 'Siege of Boralus',
   501: 'The Stonevault',
   502: 'City of Threads',
@@ -610,7 +650,7 @@ const dungeonsByMapId: NumberKeyToStringValueMapType = {
   505: 'The Dawnbreaker',
   507: 'Grim Batol',
 
-  // TWW S2 - taken from WoWhead, searching for "set keystone map X".
+  // TWW S2 - taken from WoWhead, searching for "set keystone map: X".
   499: 'Priory of the Sacred Flame',
   504: 'Darkflame Cleft',
   500: 'The Rookery',
@@ -618,8 +658,27 @@ const dungeonsByMapId: NumberKeyToStringValueMapType = {
   247: 'THE MOTHERLODE!!',
   525: 'Operation: Floodgate',
 
-  // TWW S3 - taken from WoWhead, searching for "set keystone map X".
+  // TWW S3 - taken from WoWhead, searching for "set keystone map: X".
   542: "Eco-Dome Al'Dani",
+
+  // Midnight Season 1 - taken from WoWhead, searching for "set keystone map: X".
+  558: "Magister's Terrace",
+  560: 'Maisara Caverns',
+  559: 'Nexus-Point Xenas',
+  557: 'Windrunner Spire',
+  556: 'Pit of Saron',
+  239: 'Seat of the Triumvirate',
+  161: 'Skyreach',
+
+  // Midnight Season 2 - taken from WoWhead, searching for "set keystone map: X".
+  399: 'Ruby Life Pools',
+  587: 'Murder Row',
+  586: 'Den of Nalorakk',
+  584: 'The Blinding Vale',
+  585: 'Voidscar Arena',
+  588: 'Altar of Fangs',
+  250: 'Temple of Sethraliss',
+  249: "Kings' Rest",
 };
 
 /**
@@ -652,10 +711,8 @@ const dungeonTimersByMapId: { [id: number]: number[] } = {
   166: [30 * 60, 24 * 60, 18 * 60],
 
   // Dragonflight S1
-  399: [30 * 60, 24 * 60, 18 * 60],
   400: [40 * 60, 32 * 60, 24 * 60],
   401: [37 * 60 + 30, 30 * 60, 22 * 60 + 30],
-  402: [32 * 60, 25 * 60 + 36, 19 * 60 + 12],
   200: [38 * 60, 30 * 60 + 24, 22 * 60 + 48],
   210: [30 * 60, 24 * 60, 18 * 60],
   165: [33 * 60, 26 * 60 + 24, 19 * 60 + 48],
@@ -704,6 +761,29 @@ const dungeonTimersByMapId: { [id: number]: number[] } = {
   // TWW S3
   // Timings from https://www.wowhead.com/guide/mythic-plus-dungeons/the-war-within-season-3/overview.
   542: [31 * 60, 31 * 60 * 0.8, 31 * 60 * 0.6], // "Eco-Dome Al'Dani"
+
+  // Midnight S1
+  // Timings from https://www.wowhead.com/guide/midnight/mythic-plus-season-1-overview.
+  558: [34 * 60, 27 * 60 + 12, 20 * 60 + 24], // Magister's Terrace
+  560: [33 * 60, 26 * 60 + 24, 19 * 60 + 48], // Maisara Caverns
+  559: [30 * 60, 24 * 60, 18 * 60], // Nexus-Point Xenas
+  557: [33 * 60 + 30, 26 * 60 + 48, 20 * 60 + 6], // Windrunner Spire
+  402: [31 * 60, 24 * 60 + 48, 18 * 60 + 36], // Algeth'ar Academy
+  556: [30 * 60, 24 * 60, 18 * 60], // Pit of Saron
+  239: [34 * 60, 27 * 60 + 12, 20 * 60 + 24], // Seat of the Triumvirate
+  161: [28 * 60, 22 * 60 + 36, 16 * 60 + 42], // Skyreach
+
+  // Midnight S2
+  // Timings from https://www.wowhead.com/guide/midnight/mythic-plus-season-overview.
+  // Assumed 0.8 and 0.6 multipliers for 2 and 3 chest times.
+  399: [30 * 60, 30 * 60 * 0.8, 30 * 60 * 0.6], // Ruby Life Pools
+  587: [34 * 60, 34 * 60 * 0.8, 34 * 60 * 0.6], // Murder Row
+  586: [32 * 60, 32 * 60 * 0.8, 32 * 60 * 0.6], // Den of Nalorakk
+  584: [30 * 60, 30 * 60 * 0.8, 30 * 60 * 0.6], // The Blinding Vale
+  585: [30 * 60, 30 * 60 * 0.8, 30 * 60 * 0.6], // Voidscar Arena
+  588: [30 * 60, 30 * 60 * 0.8, 30 * 60 * 0.6], // Altar of Fangs
+  250: [32 * 60, 32 * 60 * 0.8, 32 * 60 * 0.6], // Temple of Sethraliss
+  249: [33 * 60, 33 * 60 * 0.8, 33 * 60 * 0.6], // Kings' Rest
 };
 
 // Useful database for grabbing this stuff:
@@ -1021,6 +1101,84 @@ const dungeonEncounters: NumberKeyToStringValueMapType = {
   3107: 'Azhiccar',
   3108: "Taah'bat and A'wazj",
   3109: 'Soul-Scribe',
+
+  // Magister's Terrace
+  3071: 'Arcanotron Custos',
+  3073: 'Gemellus',
+  3072: 'Seranel Sunlash',
+  3074: 'Degentrius',
+
+  // Maisara Caverns
+  3212: "Muro'jin and Nekraxx",
+  3214: "Rak'tul, Vessel of Souls",
+  3213: 'Vordaza',
+
+  // Nexus-Point Xenas
+  3328: 'Chief Corewright Kasreth',
+  3332: 'Corewarden Nysarra',
+  3333: 'Lothraxion',
+
+  // Windrunner Spire
+  3058: 'Commander Kroluk',
+  3057: 'Derelict Duo',
+  3056: 'Emberdawn',
+  3059: 'The Restless Heart',
+
+  // Pit of Saron
+  1999: 'Forgemaster Garfrost',
+  2001: 'Ick and Krick',
+  2000: 'Scourgelord Tyrannus',
+
+  // Seat of the Triumvirate
+  2068: "L'ura",
+  2066: 'Saprish',
+  2067: 'Viceroy Nezhar',
+  2065: 'Zuraal the Ascended',
+
+  // Skyreach
+  1699: 'Araknath',
+  1701: 'High Sage Viryx',
+  1698: 'Ranjit',
+  1700: 'Rukhran',
+
+  // Murder Row
+  3101: 'Kystia Manaheart',
+  3102: 'Zaen Bladesorrow',
+  3103: 'Xathuux the Annihilator',
+  3105: 'Lithiel Cinderfury',
+
+  // Den of Nalorakk
+  3207: 'The Hoardmonger',
+  3208: 'Sentinel of Winter',
+  3209: 'Nalorakk',
+
+  // The Blinding Vale
+  3199: 'Lightblossom Trinity',
+  3200: 'Ikuzz the Light Hunter',
+  3201: 'Lightwarden Ruia',
+  3202: 'Ziekket',
+
+  // Voidscar Arena
+  3285: "Taz'Rah",
+  3286: 'Atroxus',
+  3287: 'Charonus',
+
+  // Altar of Fangs
+  3456: "Rav'i",
+  3457: 'The Writhing Coil',
+  3458: "Zul'jan",
+
+  // Temple of Sethraliss
+  2124: 'Adderis and Aspix',
+  2125: 'Merektha',
+  2126: 'Galvazzt',
+  2127: 'Avatar of Sethraliss',
+
+  // Kings' Rest
+  2139: 'The Golden Serpent',
+  2142: 'Mchimba the Embalmer',
+  2140: 'The Council of Tribes',
+  2143: 'Dazar, The First King',
 };
 
 const instanceNamesByZoneId: NumberKeyToStringValueMapType = {
@@ -1074,6 +1232,7 @@ const dungeonAffixesById: NumberKeyToStringValueMapType = {
   159: 'Oblivion',
   160: 'Devour',
   162: 'Pulsar',
+  165: "Lindormi's Guidance",
 };
 
 /**
@@ -1094,7 +1253,13 @@ const instanceEncountersById: NumberKeyToStringValueMapType = {
 };
 
 type InstanceDifficultyPartyType = 'party' | 'raid' | 'pvp';
-type InstanceDifficultyIdType = 'lfr' | 'normal' | 'heroic' | 'mythic' | 'pvp';
+type InstanceDifficultyIdType =
+  | 'lfr'
+  | 'normal'
+  | 'heroic'
+  | 'mythic'
+  | 'pvp'
+  | 'delve';
 type InstanceDifficultyType = {
   difficultyID: InstanceDifficultyIdType;
   difficulty: string;
@@ -1161,7 +1326,6 @@ const instanceDifficulty: InstanceDifficultyObjectType = {
     partyType: 'raid',
     phrase: Phrase.Normal,
   },
-
   // Retail raids
   14: {
     difficultyID: 'normal',
@@ -1187,7 +1351,6 @@ const instanceDifficulty: InstanceDifficultyObjectType = {
     partyType: 'raid',
     phrase: Phrase.LFR,
   },
-
   23: {
     difficultyID: 'mythic',
     difficulty: 'M',
@@ -1279,6 +1442,24 @@ const instanceDifficulty: InstanceDifficultyObjectType = {
     difficulty: 'N',
     partyType: 'raid',
     phrase: Phrase.Normal,
+  },
+  233: {
+    difficultyID: 'mythic', // Mythic flex (Rotmire)
+    difficulty: 'M',
+    partyType: 'raid',
+    phrase: Phrase.Mythic,
+  },
+  208: {
+    difficultyID: 'delve', // Delve "??" boss?
+    difficulty: '??',
+    partyType: 'raid',
+    phrase: Phrase.Mythic,
+  },
+  250: {
+    difficultyID: 'lfr', // World LFR (Nymrissa)
+    difficulty: 'LFR',
+    partyType: 'raid',
+    phrase: Phrase.LFR,
   },
 };
 
@@ -1407,6 +1588,13 @@ const specializationById: { [id: number]: SpecializationObjectType } = {
     class: 'DEMONHUNTER',
     label: 'Demon Hunter',
     name: 'Vengeance',
+  },
+  1480: {
+    type: 'ranged',
+    role: 'damage',
+    class: 'DEMONHUNTER',
+    label: 'Demon Hunter',
+    name: 'Devourer',
   },
   102: {
     type: 'ranged',
@@ -1777,6 +1965,35 @@ const mopChallengeModesTimers: Record<number, number[]> = {
   78: [45, 22, 13], // Scarlet Monastery
 };
 
+const wowInstallSearchPaths = [
+  'C:\\World of Warcraft',
+  'C:\\Program Files\\World of Warcraft',
+  'C:\\Program Files (x86)\\World of Warcraft',
+  'D:\\World of Warcraft',
+  'D:\\Program Files\\World of Warcraft',
+  'D:\\Program Files (x86)\\World of Warcraft',
+  'E:\\World of Warcraft',
+  'E:\\Program Files\\World of Warcraft',
+  'E:\\Program Files (x86)\\World of Warcraft',
+];
+
+// PTR dummy dome encounters. Just added these in-case we want
+// to do something with them one day. Not actually used them yet.
+//   - '6/26/2026 22:56:59.0091 ENCOUNTER_START,3590,"Diabolical Duo",3,10,3105',
+//   - '6/26/2026 22:58:06.5911 ENCOUNTER_START,3591,"Sinister Single",3,10,3105',
+//   - '6/26/2026 22:59:29.1651 ENCOUNTER_START,3593,"Fearsome Five",3,10,3105',
+//   - '6/26/2026 22:59:54.4311 ENCOUNTER_START,3594,"Hazardous Healer",3,10,3105',
+const dummyDomeEncounterIds = [3590, 3591, 3593, 3594];
+
+// We have exactly 6 audio tracks. They are represented here as bit flags.
+const audioTrack1 = 1 << 0;
+const audioTrack2 = 1 << 1;
+const audioTrack3 = 1 << 2;
+const audioTrack4 = 1 << 3;
+const audioTrack5 = 1 << 4;
+const audioTrack6 = 1 << 5;
+const defaultAudioTrack = audioTrack1;
+
 export {
   months,
   categoryTabSx,
@@ -1810,4 +2027,13 @@ export {
   currentRetailEncounters,
   mopChallengeModes,
   mopChallengeModesTimers,
+  wowInstallSearchPaths,
+  dummyDomeEncounterIds,
+  audioTrack1,
+  audioTrack2,
+  audioTrack3,
+  audioTrack4,
+  audioTrack5,
+  audioTrack6,
+  defaultAudioTrack,
 };

@@ -28,17 +28,25 @@ interface IProps {
   recorderStatus: RecStatus;
   config: ConfigurationSchema;
   setConfig: Dispatch<SetStateAction<ConfigurationSchema>>;
+  previewEnabled: boolean;
+  setPreviewEnabled: Dispatch<SetStateAction<boolean>>;
 }
 
 const SceneEditor: React.FC<IProps> = (props: IProps) => {
-  const { recorderStatus, appState, config, setConfig } = props;
-  const [previewEnabled, setPreviewEnabled] = useState(true);
+  const {
+    recorderStatus,
+    appState,
+    config,
+    setConfig,
+    previewEnabled,
+    setPreviewEnabled,
+  } = props;
   const [snapEnabled, setSnapEnabled] = useState(true);
 
   const renderResetGameButton = () => {
     return (
       <Button
-        className="flex w-[60px] text-xs text-foreground-lighter whitespace-normal break-words text-center"
+        className="flex w-[80px] text-xs text-foreground-lighter whitespace-normal break-words text-center"
         variant="ghost"
         size="xs"
         onClick={() => ipc.resetSourcePosition(SceneItem.GAME)}
@@ -51,7 +59,7 @@ const SceneEditor: React.FC<IProps> = (props: IProps) => {
   const renderResetOverlayButton = () => {
     return (
       <Button
-        className="flex w-[60px] text-xs text-foreground-lighter whitespace-normal break-words text-center"
+        className="flex w-[80px] text-xs text-foreground-lighter whitespace-normal break-words text-center"
         variant="ghost"
         size="xs"
         onClick={() => {
@@ -156,6 +164,8 @@ const SceneEditor: React.FC<IProps> = (props: IProps) => {
                 recorderStatus={recorderStatus}
                 appState={appState}
                 setPreviewEnabled={setPreviewEnabled}
+                config={config}
+                setConfig={setConfig}
               />
             </div>
           </TabsContent>

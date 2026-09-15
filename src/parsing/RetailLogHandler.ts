@@ -17,12 +17,14 @@ import ChallengeModeDungeon from '../activitys/ChallengeModeDungeon';
 
 import { DungeonTimelineSegment, TimelineSegmentType } from '../main/keystone';
 
-import { Flavour } from '../main/types';
+import { Flavour, PlayerDeathType } from '../main/types';
 import SoloShuffle from '../activitys/SoloShuffle';
 import LogLine from './LogLine';
 import { VideoCategory } from '../types/VideoCategory';
-import { isUnitSelf } from './logutils';
+import { isUnitFriendly, isUnitSelf } from './logutils';
 import ConfigService from 'config/ConfigService';
+import RaidEncounter from 'activitys/RaidEncounter';
+import { refreshInstantReplayState } from 'main/util';
 
 /**
  * RetailLogHandler class.
@@ -33,43 +35,23 @@ export default class RetailLogHandler extends LogHandler {
   constructor(logPath: string) {
     super(logPath, 10);
 
+    /* eslint-disable prettier/prettier */
     this.combatLogWatcher
-      .on('ENCOUNTER_START', async (line: LogLine) => {
-        await this.handleEncounterStartLine(line);
-      })
-      .on('ENCOUNTER_END', async (line: LogLine) => {
-        await this.handleEncounterEndLine(line);
-      })
-      .on('ZONE_CHANGE', async (line: LogLine) => {
-        await this.handleZoneChange(line);
-      })
-      .on('SPELL_AURA_APPLIED', (line: LogLine) => {
-        this.handleSpellAuraAppliedLine(line);
-      })
-      .on('UNIT_DIED', (line: LogLine) => {
-        this.handleUnitDiedLine(line);
-      })
-      .on('ARENA_MATCH_START', async (line: LogLine) => {
-        await this.handleArenaStartLine(line);
-      })
-      .on('ARENA_MATCH_END', async (line: LogLine) => {
-        await this.handleArenaEndLine(line);
-      })
-      .on('CHALLENGE_MODE_START', async (line: LogLine) => {
-        await this.handleChallengeModeStartLine(line);
-      })
-      .on('CHALLENGE_MODE_END', async (line: LogLine) => {
-        await this.handleChallengeModeEndLine(line);
-      })
-      .on('COMBATANT_INFO', async (line: LogLine) => {
-        this.handleCombatantInfoLine(line);
-      })
-      .on('SPELL_CAST_SUCCESS', async (line: LogLine) => {
-        this.handleSpellCastSuccess(line);
-      })
-      .on('SPELL_DAMAGE', async (line: LogLine) => {
-        this.handleSpellDamage(line);
-      });
+      .on('ENCOUNTER_START',      (line: LogLine) => { this.logProcessQueue.add(async () =>  this.handleEncounterStartLine(line));})
+      .on('ENCOUNTER_END',        (line: LogLine) => { this.logProcessQueue.add(async () => this.handleEncounterEndLine(line)); })
+      .on('ZONE_CHANGE',          (line: LogLine) => { this.logProcessQueue.add(async () => this.handleZoneChange(line)); })
+      .on('SPELL_AURA_APPLIED',   (line: LogLine) => { this.logProcessQueue.add(async () => this.handleSpellAuraAppliedLine(line)); })
+      .on('SPELL_AURA_REMOVED',   (line: LogLine) => { this.logProcessQueue.add(async () => this.handleSpellAuraRemovedLine(line)); })
+      .on('UNIT_DIED',            (line: LogLine) => { this.logProcessQueue.add(async () => this.handleUnitDiedLine(line)); })
+      .on('ARENA_MATCH_START',    (line: LogLine) => { this.logProcessQueue.add(async () => this.handleArenaStartLine(line)); })
+      .on('ARENA_MATCH_END',      (line: LogLine) => { this.logProcessQueue.add(async () => this.handleArenaEndLine(line)); })
+      .on('CHALLENGE_MODE_START', (line: LogLine) => { this.logProcessQueue.add(async () => this.handleChallengeModeStartLine(line)); })
+      .on('CHALLENGE_MODE_END',   (line: LogLine) => { this.logProcessQueue.add(async () => this.handleChallengeModeEndLine(line)); })
+      .on('COMBATANT_INFO',       (line: LogLine) => { this.logProcessQueue.add(async () => this.handleCombatantInfoLine(line)); })
+      .on('SPELL_CAST_START',     (line: LogLine) => { this.logProcessQueue.add(async () => this.handleSpellCastStart(line)); })
+      .on('SPELL_CAST_SUCCESS',   (line: LogLine) => { this.logProcessQueue.add(async () => this.handleSpellCastSuccess(line)); })
+      .on('SPELL_DAMAGE',         (line: LogLine) => { this.logProcessQueue.add(async () => this.handleSpellDamage(line)); });
+    /* eslint-enable prettier/prettier */
   }
 
   public setIsPtr() {
@@ -79,16 +61,19 @@ export default class RetailLogHandler extends LogHandler {
   private async handleArenaStartLine(line: LogLine) {
     console.debug('[RetailLogHandler] Handling ARENA_MATCH_START line:', line);
 
-    // Important we don't exit if we're in a Solo Shuffle, we use the ARENA_MATCH_START
-    // events to keep track of the rounds.
+    if (this.isManual()) {
+      console.info('[RetailLogHandler] Ignoring line as in manual recording');
+      return;
+    }
+
     if (
       LogHandler.activity &&
       LogHandler.activity.category !== VideoCategory.SoloShuffle
     ) {
-      console.error(
-        '[RetailLogHandler] Another activity in progress and not a Solo Shuffle',
-      );
-      return;
+      // Important we don't end an activity if we're in a Solo Shuffle,
+      // we use the ARENA_MATCH_START events to keep track of the rounds.
+      console.warn('[RetailLogHandler] Active activity on ARENA_START');
+      await LogHandler.forceEndActivity();
     }
 
     const startTime = line.date();
@@ -143,6 +128,11 @@ export default class RetailLogHandler extends LogHandler {
   private async handleArenaEndLine(line: LogLine) {
     console.debug('[RetailLogHandler] Handling ARENA_MATCH_END line:', line);
 
+    if (this.isManual()) {
+      console.info('[RetailLogHandler] Ignoring line as in manual recording');
+      return;
+    }
+
     if (!LogHandler.activity) {
       console.error('[RetailLogHandler] Arena stop with no active arena match');
       return;
@@ -166,6 +156,11 @@ export default class RetailLogHandler extends LogHandler {
       '[RetailLogHandler] Handling CHALLENGE_MODE_START line:',
       line,
     );
+
+    if (this.isManual()) {
+      console.info('[RetailLogHandler] Ignoring line as in manual recording');
+      return;
+    }
 
     if (
       LogHandler.activity &&
@@ -227,11 +222,17 @@ export default class RetailLogHandler extends LogHandler {
     );
 
     activity.addTimelineSegment(initialSegment);
+    refreshInstantReplayState(activity);
     await LogHandler.startActivity(activity);
   }
 
   private async handleChallengeModeEndLine(line: LogLine) {
     console.debug('[RetailLogHandler] Handling CHALLENGE_MODE_END line:', line);
+
+    if (this.isManual()) {
+      console.info('[RetailLogHandler] Ignoring line as in manual recording');
+      return;
+    }
 
     if (!LogHandler.activity) {
       console.error(
@@ -248,7 +249,7 @@ export default class RetailLogHandler extends LogHandler {
 
     // The actual log duration of the dungeon, from which keystone upgrade
     // levels can be calculated. This includes player death penalty.
-    const CMDuration = Math.round(parseInt(line.arg(4), 10) / 1000);
+    const CMDuration = parseInt(line.arg(4), 10) / 1000;
 
     if (result) {
       const overrun = ConfigService.getInstance().get<number>('dungeonOverrun');
@@ -261,25 +262,37 @@ export default class RetailLogHandler extends LogHandler {
 
   protected async handleEncounterStartLine(line: LogLine) {
     console.debug('[RetailLogHandler] Handling ENCOUNTER_START line:', line);
+
+    if (this.isManual()) {
+      console.info('[RetailLogHandler] Ignoring line as in manual recording');
+      return;
+    }
+
     const encounterID = parseInt(line.arg(1), 10);
 
+    const knownDungeonEncounter = Object.prototype.hasOwnProperty.call(
+      dungeonEncounters,
+      encounterID,
+    );
+
+    if (!LogHandler.activity && knownDungeonEncounter) {
+      // We can hit this branch due to a few cases:
+      //   - It's a regular dungeon, we don't record those
+      //   - It's a M+ below the recording threshold
+      console.info('[RetailLogHandler] Known dungeon encounter and not in M+');
+      return;
+    }
+
+    if (LogHandler.activity && !knownDungeonEncounter) {
+      // Not a known dungeon encounter and in an activity so end the
+      // activity so we can start a raid encounter. This can happen
+      // if you abandon a key mid-pull and quickly start a raid boss
+      // before WCR has realized the M+ is over.
+      console.info('[RetailLogHandler] Active M+ but not a dungeon encounter');
+      await LogHandler.forceEndActivity();
+    }
+
     if (!LogHandler.activity) {
-      const knownDungeonEncounter = Object.prototype.hasOwnProperty.call(
-        dungeonEncounters,
-        encounterID,
-      );
-
-      if (knownDungeonEncounter) {
-        // We can hit this branch due to a few cases:
-        //   - It's a regular dungeon, we don't record those
-        //   - It's a M+ below the recording threshold
-        console.info(
-          '[RetailLogHandler] Known dungeon encounter and not in M+, not recording',
-        );
-
-        return;
-      }
-
       const currentRaidOnly = ConfigService.getInstance().get<boolean>(
         'recordCurrentRaidEncountersOnly',
       );
@@ -338,6 +351,8 @@ export default class RetailLogHandler extends LogHandler {
     );
 
     activeChallengeMode.addTimelineSegment(segment, eventDate);
+    refreshInstantReplayState(activeChallengeMode);
+
     console.debug(
       `[RetailLogHandler] Starting new boss encounter: ${dungeonEncounters[encounterID]}`,
     );
@@ -345,6 +360,11 @@ export default class RetailLogHandler extends LogHandler {
 
   protected async handleEncounterEndLine(line: LogLine) {
     console.debug('[RetailLogHandler] Handling ENCOUNTER_END line:', line);
+
+    if (this.isManual()) {
+      console.info('[RetailLogHandler] Ignoring line as in manual recording');
+      return;
+    }
 
     if (!LogHandler.activity) {
       console.error(
@@ -382,6 +402,8 @@ export default class RetailLogHandler extends LogHandler {
 
       // Add a trash segment as the boss encounter ended
       activeChallengeMode.addTimelineSegment(segment, eventDate);
+      refreshInstantReplayState(LogHandler.activity);
+
       console.debug(
         `[RetailLogHandler] Ending boss encounter: ${dungeonEncounters[encounterID]}`,
       );
@@ -390,6 +412,12 @@ export default class RetailLogHandler extends LogHandler {
 
   private async handleZoneChange(line: LogLine) {
     console.info('[RetailLogHandler] Handling ZONE_CHANGE line:', line);
+
+    if (this.isManual()) {
+      console.info('[RetailLogHandler] Ignoring line as in manual recording');
+      return;
+    }
+
     const zoneID = parseInt(line.arg(1), 10);
 
     const isZoneBG = Object.prototype.hasOwnProperty.call(
@@ -424,6 +452,7 @@ export default class RetailLogHandler extends LogHandler {
         );
 
         await LogHandler.forceEndActivity();
+        await this.battlegroundStart(line);
       } else {
         console.info(
           '[RetailLogHandler] Unknown zone change, no action taken: ',
@@ -439,6 +468,13 @@ export default class RetailLogHandler extends LogHandler {
   }
 
   private handleCombatantInfoLine(line: LogLine): void {
+    console.info('[RetailLogHandler] Handling COMBATANT_INFO line:', line);
+
+    if (this.isManual()) {
+      console.info('[RetailLogHandler] Ignoring line as in manual recording');
+      return;
+    }
+
     if (!LogHandler.activity) {
       console.warn(
         '[RetailLogHandler] No activity in progress, ignoring COMBATANT_INFO',
@@ -457,7 +493,7 @@ export default class RetailLogHandler extends LogHandler {
     }
 
     const teamID = parseInt(line.arg(2), 10);
-    const specID = parseInt(line.arg(24), 10);
+    const specID = parseInt(line.arg(25), 10);
 
     console.info(
       '[RetailLogHandler] Adding combatant from COMBATANT_INFO',
@@ -471,8 +507,8 @@ export default class RetailLogHandler extends LogHandler {
   }
 
   private handleSpellAuraAppliedLine(line: LogLine) {
-    if (!LogHandler.activity) {
-      // Deliberately don't log anything here as we hit this a lot
+    if (!LogHandler.activity || this.isManual()) {
+      // Deliberately don't log anything here as we can hit this a lot
       return;
     }
 
@@ -487,15 +523,60 @@ export default class RetailLogHandler extends LogHandler {
     // have a partially defined combatant. See issue 650 & 683.
     const allowNew = this.isBattleground() || isUnitSelf(srcFlags);
     this.processCombatant(srcGUID, srcNameRealm, srcFlags, allowNew);
+
+    const id = parseInt(line.arg(9), 10);
+
+    if (id === 211319) {
+      // This is the Holy priest "Restitution" debuff being applied, count
+      // that as a death (https://www.wowhead.com/spell=211319).
+      const deathDate = (line.date().getTime() - 2) / 1000;
+      const activityStartDate = LogHandler.activity.startDate.getTime() / 1000;
+      const relativeTime = deathDate - activityStartDate;
+
+      const playerDeath: PlayerDeathType = {
+        name: srcNameRealm,
+        specId: 257, // Must be a holy priest.
+        date: line.date(),
+        timestamp: relativeTime,
+        friendly: isUnitFriendly(srcFlags),
+      };
+
+      LogHandler.activity.addDeath(playerDeath);
+    }
+
+    if (this.isRaid()) {
+      const raid = LogHandler.activity as RaidEncounter;
+      raid.onSpellAuraApplied(line);
+    }
+  }
+
+  private handleSpellAuraRemovedLine(line: LogLine) {
+    if (this.isRaid()) {
+      const raid = LogHandler.activity as RaidEncounter;
+      raid.onSpellAuraRemoved(line);
+    }
+  }
+
+  private handleSpellCastStart(line: LogLine) {
+    if (this.isRaid()) {
+      const raid = LogHandler.activity as RaidEncounter;
+      raid.onSpellCastStart(line);
+    }
   }
 
   private handleSpellCastSuccess(line: LogLine) {
-    if (!LogHandler.activity) {
+    if (!LogHandler.activity || this.isManual()) {
+      // Deliberately don't log anything here as we can hit this a lot
       return;
     }
 
+    if (this.isRaid()) {
+      const raid = LogHandler.activity as RaidEncounter;
+      raid.onSpellCastSuccess(line);
+    }
+
     const srcGUID = line.arg(1);
-    const srcNameRealm = line.arg(2);
+    const srcName = line.arg(2);
     const srcFlags = parseInt(line.arg(3), 16);
 
     // The isUnitSelf() check is important here as for M+ we won't see
@@ -507,7 +588,7 @@ export default class RetailLogHandler extends LogHandler {
 
     const combatant = this.processCombatant(
       srcGUID,
-      srcNameRealm,
+      srcName,
       srcFlags,
       allowNew,
     );

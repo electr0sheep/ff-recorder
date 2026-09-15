@@ -1,9 +1,15 @@
 import { getLocalePhrase } from 'localisation/translations';
 import { Phrase } from 'localisation/phrases';
-import { HardDriveDownload } from 'lucide-react';
+import { HardDriveDownload, TriangleAlert } from 'lucide-react';
 import { ConfigurationSchema } from 'config/configSchema';
-import { AppState, RecStatus, SaveStatus } from 'main/types';
-import React from 'react';
+import {
+  ActivityStatus,
+  CombatLoggingStatus,
+  AppState,
+  RecStatus,
+  SaveStatus,
+} from 'main/types';
+import React, { Dispatch, SetStateAction, useEffect, useState } from 'react';
 import { Button } from 'renderer/components/Button/Button';
 import {
   HoverCard,
@@ -11,10 +17,12 @@ import {
   HoverCardTrigger,
 } from 'renderer/components/HoverCard/HoverCard';
 import Separator from 'renderer/components/Separator/Separator';
+import { Tooltip } from 'renderer/components/Tooltip/Tooltip';
 import StatusLight, {
   StatusLightProps,
 } from 'renderer/components/StatusLight/StatusLight';
 import { cn } from 'renderer/components/utils';
+import { secToMmSs } from 'renderer/rendererutils';
 
 type StatusInfo = {
   statusTitle: string;
@@ -28,6 +36,9 @@ type StatusProps = {
   savingStatus: SaveStatus;
   config: ConfigurationSchema;
   appState: AppState;
+  activityStatus: ActivityStatus | null;
+  combatLoggingStatus: CombatLoggingStatus;
+  setPreviewEnabled: Dispatch<SetStateAction<boolean>>;
 };
 
 const Status = ({
@@ -36,11 +47,32 @@ const Status = ({
   savingStatus,
   config,
   appState,
+  activityStatus,
+  combatLoggingStatus,
+  setPreviewEnabled,
 }: StatusProps) => {
   const { language } = appState;
+  const [recTimerSec, setRecTimerSec] = useState(0);
+
+  useEffect(() => {
+    if (!activityStatus) return;
+
+    const tick = () => {
+      const elapsed = Math.floor((Date.now() - activityStatus.start) / 1000);
+      setRecTimerSec(elapsed);
+    };
+
+    tick();
+    const id = setInterval(tick, 1000);
+
+    return () => {
+      clearInterval(id);
+      setRecTimerSec(0);
+    };
+  }, [activityStatus]);
 
   const stopRecording = () => {
-    window.electron.ipcRenderer.sendMessage('recorder', ['stop']);
+    window.electron.ipcRenderer.forceStopRecording();
   };
 
   const getConfiguredFlavours = () => {
@@ -63,6 +95,11 @@ const Status = ({
 
     if (config.recordRetailPtr) {
       const s = getLocalePhrase(language, Phrase.RetailPtr);
+      flavours.push(s);
+    }
+
+    if (config.recordClassicPtr) {
+      const s = getLocalePhrase(language, Phrase.ClassicPtr);
       flavours.push(s);
     }
 
@@ -184,6 +221,20 @@ const Status = ({
                 {getLocalePhrase(language, Phrase.Retail)}
                 {': '}
               </span>
+              {!combatLoggingStatus.retail.advanced && (
+                <Tooltip
+                  content={getLocalePhrase(
+                    language,
+                    Phrase.AdvancedCombatLoggingDisabledWarning,
+                  )}
+                >
+                  <TriangleAlert
+                    size={12}
+                    fill="#facc15"
+                    className="text-yellow-900 mr-1 inline align-middle -mt-0.5"
+                  />
+                </Tooltip>
+              )}
               <code>{config.retailLogPath}</code>
             </li>
           )}
@@ -193,6 +244,20 @@ const Status = ({
                 {getLocalePhrase(language, Phrase.Classic)}
                 {': '}
               </span>
+              {!combatLoggingStatus.classic.advanced && (
+                <Tooltip
+                  content={getLocalePhrase(
+                    language,
+                    Phrase.AdvancedCombatLoggingDisabledWarning,
+                  )}
+                >
+                  <TriangleAlert
+                    size={12}
+                    fill="#facc15"
+                    className="text-yellow-900 mr-1 inline align-middle -mt-0.5"
+                  />
+                </Tooltip>
+              )}
               <code>{config.classicLogPath}</code>
             </li>
           )}
@@ -202,6 +267,20 @@ const Status = ({
                 {getLocalePhrase(language, Phrase.Era)}
                 {': '}
               </span>
+              {!combatLoggingStatus.era.advanced && (
+                <Tooltip
+                  content={getLocalePhrase(
+                    language,
+                    Phrase.AdvancedCombatLoggingDisabledWarning,
+                  )}
+                >
+                  <TriangleAlert
+                    size={12}
+                    fill="#facc15"
+                    className="text-yellow-900 mr-1 inline align-middle -mt-0.5"
+                  />
+                </Tooltip>
+              )}
               <code>{config.eraLogPath}</code>
             </li>
           )}
@@ -211,7 +290,44 @@ const Status = ({
                 {getLocalePhrase(language, Phrase.RetailPtr)}
                 {': '}
               </span>
+              {!combatLoggingStatus.retailPtr.advanced && (
+                <Tooltip
+                  content={getLocalePhrase(
+                    language,
+                    Phrase.AdvancedCombatLoggingDisabledWarning,
+                  )}
+                >
+                  <TriangleAlert
+                    size={12}
+                    fill="#facc15"
+                    className="text-yellow-900 mr-1 inline align-middle -mt-0.5"
+                  />
+                </Tooltip>
+              )}
               <code>{config.retailPtrLogPath}</code>
+            </li>
+          )}
+          {config.recordClassicPtr && (
+            <li>
+              <span className="font-bold">
+                {getLocalePhrase(language, Phrase.ClassicPtr)}
+                {': '}
+              </span>
+              {!combatLoggingStatus.classicPtr.advanced && (
+                <Tooltip
+                  content={getLocalePhrase(
+                    language,
+                    Phrase.AdvancedCombatLoggingDisabledWarning,
+                  )}
+                >
+                  <TriangleAlert
+                    size={12}
+                    fill="#facc15"
+                    className="text-yellow-900 mr-1 inline align-middle -mt-0.5"
+                  />
+                </Tooltip>
+              )}
+              <code>{config.classicPtrLogPath}</code>
             </li>
           )}
           {config.recordFFXIV && (
@@ -273,7 +389,12 @@ const Status = ({
   const isSaving = savingStatus === SaveStatus.Saving;
 
   return (
-    <HoverCard openDelay={300}>
+    <HoverCard
+      openDelay={300}
+      onOpenChange={(open) => {
+        if (statusDescription) setPreviewEnabled(!open);
+      }}
+    >
       <HoverCardTrigger>
         <div className="w-full h-full flex relative rounded-md border-t border-[rgba(255,255,255,10%)] hover:cursor-pointer">
           <StatusLight
@@ -293,6 +414,11 @@ const Status = ({
               )}
             >
               {statusTitle}
+              {recTimerSec > 0 && (
+                <div className="mx-2 text-foreground">
+                  {secToMmSs(recTimerSec)}
+                </div>
+              )}
               {isSaving && (
                 <HardDriveDownload size={14} className="mx-1 animate-pulse" />
               )}
@@ -300,7 +426,7 @@ const Status = ({
           </div>
         </div>
         {!!statusDescription && (
-          <HoverCardContent className="w-[260px] mx-4">
+          <HoverCardContent className="w-[500px]  mx-4">
             {statusDescription}
           </HoverCardContent>
         )}

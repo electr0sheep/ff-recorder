@@ -54,8 +54,16 @@ class DungeonTimelineSegment {
   }
 }
 
+// The WoW code (and upstream) still use the challenge mode names; the
+// dungeon names are shared with FFXIV. Both name the same things.
+type RawChallengeModeTimelineSegment = RawDungeonTimelineSegment;
+const ChallengeModeTimelineSegment = DungeonTimelineSegment;
+type ChallengeModeTimelineSegment = DungeonTimelineSegment;
+
 export {
   TimelineSegmentType,
   DungeonTimelineSegment,
   RawDungeonTimelineSegment,
+  ChallengeModeTimelineSegment,
+  RawChallengeModeTimelineSegment,
 };

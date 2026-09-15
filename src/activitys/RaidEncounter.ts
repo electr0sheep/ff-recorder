@@ -6,6 +6,8 @@ import { instanceDifficulty, raidInstances } from '../main/constants';
 import { VideoCategory } from '../types/VideoCategory';
 import Activity from './Activity';
 import { Phrase } from 'localisation/phrases';
+import { app } from 'electron';
+import LogLine from 'parsing/LogLine';
 
 /**
  * Class representing a raid encounter.
@@ -17,11 +19,35 @@ export default class RaidEncounter extends Activity {
 
   private _encounterName: string;
 
-  private currentHp = 1;
+  /**
+   * A simple encounter can be tracked purely by the boss HP.
+   */
+  protected simpleEncounterProgress = true;
 
-  private maxHp = 1;
+  /**
+   * If the boss isn't the highest HP unit in the encounter, then set this.
+   */
+  protected bossUnitId = -1;
 
-  constructor(
+  /**
+   * Most encounters the boss is the highest HP unit, so track that as the
+   * criteria for progress updates.
+   */
+  private encounterMaxHp = -1;
+
+  /**
+   * The actual progress of the encounter as a percent. Usually this is just
+   * boss HP but it can be more complex for some encounters.
+   */
+  private encounterProgressPercent = 100;
+
+  /**
+   * Exists for handling the big shield at the start of the Gallywix encounter,
+   * as there are no damage SPELL_DAMAGE events for a while due to the absorb.
+   */
+  private static minRetailBossHp = 100 * 10 ** 6;
+
+  public constructor(
     startDate: Date,
     encounterID: number,
     encounterName: string,
@@ -123,8 +149,6 @@ export default class RaidEncounter extends Activity {
       (combatant: Combatant) => combatant.getRaw(),
     );
 
-    const bossPercent = Math.round((100 * this.currentHp) / this.maxHp);
-
     return {
       category: VideoCategory.Raids,
       zoneID: this.zoneID,
@@ -142,7 +166,8 @@ export default class RaidEncounter extends Activity {
       combatants: rawCombatants,
       start: this.startDate.getTime(),
       uniqueHash: this.getUniqueHash(),
-      bossPercent,
+      bossPercent: this.encounterProgressPercent,
+      appVersion: app.getVersion(),
     };
   }
 
@@ -165,20 +190,84 @@ export default class RaidEncounter extends Activity {
   }
 
   /**
-   * Update the max and current HP of the boss. Used to calculate the
-   * HP percentage at the end of the fight.
-   *
-   * The log handler doesn't have a way to tell if the unit is the boss or
-   * not (atleast, not without hardcoding boss names), so we let the handler
-   * call this this on any unit, but ignore any units with less than the max HP
-   * of the boss.
-   *
-   * It's a fairly safe bet that the boss will always have the most HP in an
-   * encounter. Can't think of any fights where this isn't true.
+   * Get the NPC ID from a GUID. GUID looks like:
+   *  "Creature-0-4244-2913-38715-240387-000073A7B0"
+   * The stable encounter ID is the 5th hypen seperated element.
    */
-  public updateHp(current: number, max: number): void {
-    if (max < this.maxHp) return;
-    this.maxHp = max;
-    this.currentHp = current;
+  protected getNpcIdFromGuid(guid: string): number {
+    return parseInt(guid.split('-')[5], 10);
   }
+
+  public onSpellDamage(spellDamageEvent: LogLine): void {
+    if (!this.simpleEncounterProgress) {
+      return;
+    }
+
+    const unitMaxHp = parseInt(spellDamageEvent.arg(15), 10);
+    const unitCurrentHp = parseInt(spellDamageEvent.arg(14), 10);
+
+    if (this.bossUnitId > 0) {
+      const guid = spellDamageEvent.arg(5);
+      const unitId = this.getNpcIdFromGuid(guid);
+
+      if (unitId === this.bossUnitId) {
+        this.encounterProgressPercent = Math.round(
+          (100 * unitCurrentHp) / unitMaxHp,
+        );
+      }
+
+      return;
+    }
+
+    // We don't know the boss unit name so fall back to assuming the
+    // unit with the highest max HP is the boss, which is true for 90%
+    // of encounters.
+    if (
+      this.flavour === Flavour.Retail &&
+      unitMaxHp < RaidEncounter.minRetailBossHp
+    ) {
+      // Assume that if the HP is less than 100 million then it's not a boss.
+      // That avoids us marking bosses as 0% when they haven't been touched
+      // yet, i.e. short pulls on Gallywix before the shield is broken and we are
+      // yet to see SPELL_DAMAGE events (and instead get SPELL_ABSORBED). Only do
+      // this for retail as classic will have lower HP bosses and I can't be
+      // bothered worrying about it there.
+      return;
+    }
+
+    if (unitMaxHp < this.encounterMaxHp) {
+      // This unit has less max HP than the highest HP unit.
+      return;
+    }
+
+    this.encounterMaxHp = unitMaxHp;
+    this.encounterProgressPercent = Math.round(
+      (100 * unitCurrentHp) / unitMaxHp,
+    );
+  }
+
+  protected setEncounterPercent(percent: number): void {
+    if (this.simpleEncounterProgress) {
+      throw new Error('Bad programmer, only call this on complex encounters.');
+    }
+
+    const updated = Math.round(percent);
+
+    if (updated < this.encounterProgressPercent) {
+      // Some encounters like Coiled Altar heal, don't backtrack the progress.
+      this.encounterProgressPercent = updated;
+    }
+  }
+
+  /* eslint-disable @typescript-eslint/no-unused-vars */
+  public onSpellCastStart(line: LogLine) {}
+
+  public onSpellCastSuccess(line: LogLine) {}
+
+  public onUnitDied(line: LogLine) {}
+
+  public onSpellAuraApplied(line: LogLine) {}
+
+  public onSpellAuraRemoved(line: LogLine) {}
+  /* eslint-enable @typescript-eslint/no-unused-vars */
 }

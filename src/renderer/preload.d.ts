@@ -1,7 +1,13 @@
 import ElectronStore from 'electron-store';
 import { Channels } from 'main/preload';
-import { AudioSourceType, SceneItem } from 'main/types';
-import { Crop, ObsProperty, SceneItemPosition, SourceDimensions } from 'noobs';
+import {
+  AudioSourceType,
+  KillVideoSegment,
+  RendererVideo,
+  SceneItem,
+} from 'main/types';
+import { ObsProperty, SceneItemPosition, SourceDimensions } from 'noobs';
+import { TChatMessageWithId } from 'types/api';
 
 declare global {
   interface Window {
@@ -37,7 +43,7 @@ declare global {
 
         getSourcePosition(
           src: SceneItem,
-        ): Promise<SceneItemPosition & SourceDimensions & Crop>;
+        ): Promise<SceneItemPosition & SourceDimensions>;
         resetSourcePosition(src: SceneItem): void;
         setSourcePosition(
           src: SceneItem,
@@ -60,6 +66,7 @@ declare global {
         deleteAudioSource(id: string): void;
         setAudioSourceDevice(id: string, device: string): void;
         setAudioSourceWindow(id: string, window: string): void;
+        setAudioSourceTracks(id: string, tracks: number): void;
         setAudioSourceVolume(id: string, volume: number): void;
         setForceMono(enabled: boolean): void;
         setAudioSuppression(enabled: boolean): void;
@@ -72,6 +79,27 @@ declare global {
 
         getSensibleEncoderDefault(): Promise<string>;
         refreshCloudGuilds(): void;
+        getOrCreateChatCorrelator(video: RendererVideo): Promise<string>;
+        getChatMessages(correlator: string): Promise<TChatMessageWithId[]>;
+        postChatMessage(correlator: string, message: string): void;
+        deleteChatMessage(id: number): void;
+        toggleManualRecording(): void;
+        forceStopRecording(): void;
+
+        createKillVideo(
+          width: number,
+          height: number,
+          fps: number,
+          sources: KillVideoSegment[],
+          audioSegmentIndex: number,
+        ): void;
+
+        clipVideo(video: RendererVideo, offset: number, duration: number): void;
+        getHardwareAcceleration(): boolean;
+        createDiagsBundle(): Promise<string>;
+        openSystemExplorer(path: string): void;
+        setOpenInstantReplayFile(path: string | null): void;
+        refreshCombatLogStatus(): void;
       };
     };
   }

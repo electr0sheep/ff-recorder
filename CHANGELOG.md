@@ -8,6 +8,268 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 ### Added
 ### Fixed
+- Add Nymrissa "World LFR" difficulty.
+
+## [7.13.2] - 2026-08-30
+### Fixed
+- Fix log path config not being applied correctly.
+
+## [7.13.1] - 2026-08-30
+### Changed
+- Always show instant replay button, but disable it when not available.
+### Added
+- Add the `2560x720` resolution option.
+- [Issue 894](https://github.com/aza547/wow-recorder/issues/894) - Displays the age of the latest combat log in settings to make it easier to spot misconfigurations.
+- There is now a "open location" button for configured log paths for ease of access.
+- Azra'tec recording support (delve boss, it will record as if it were a Mythic raid encounter).
+### Fixed
+- [Issue 879](https://github.com/aza547/wow-recorder/issues/879) - Restore clip source navigation after the React Table v9 migration.
+- Better tracking of Coiled Altar fight progress.
+- Fix localisation of the Instant Replay button.
+- [Issue 880](https://github.com/aza547/wow-recorder/issues/880), [Issue 900](https://github.com/aza547/wow-recorder/issues/900) - Take noobs `0.0.205` which has a bunch of added mutex protection around the replay buffer. 
+
+## [7.13.0] - 2026-08-27
+### Changed
+- [Issue 843](https://github.com/aza547/wow-recorder/issues/843) - Revamp the Lock, Tag and Delete dialogs to enable per-video control.
+- Migrate to React Table v9.
+- Tidy the shortcut indicators.
+
+### Fixed
+- [Issue 879](https://github.com/aza547/wow-recorder/issues/879) - Fix clip source navigation not scrolling to recordings on later table pages.
+
+## [7.12.0] - 2026-08-18
+### Added
+- [Issue 730](https://github.com/aza547/wow-recorder/issues/730) - Add per-source audio track routing.
+- Update M+ timers for Midnight season 2.
+
+### Fixed
+- [Issue 886](https://github.com/aza547/wow-recorder/issues/886) - Fix the delete dialog which had misaligned indexing.
+- [Issue 891](https://github.com/aza547/wow-recorder/issues/891) - Fix a bug where opening the drawer while filtering could crash the UI.
+- Disable the upload, download and source controls when storage filters are applied.
+- Ctrl + clicking a selected row will no longer unselect it.
+- Fixed a handful of phrases that were not getting translated.
+
+
+## [7.11.1] - 2026-07-25
+### Fixed
+- Fix an issue where the pagination buttons were not working.
+
+## [7.11.0] - 2026-07-25
+### Added
+- Add the ability to seek to a clip's source, if it is still available.
+- Added some hotkey hints to the video selection table.
+- [Issue 877](https://github.com/aza547/wow-recorder/pull/878) - Instant replay is now available in the overrun.
+  
+### Fixed
+- [Issue 855](https://github.com/aza547/wow-recorder/issues/855) - Share log handler timeouts between game modes.
+- Fix an issue where the progress bar on the video player would not be set correctly until it started playing.
+- [Issue 876](https://github.com/aza547/wow-recorder/issues/876) - Fix tag dialog not opening on some categories.
+
+## [7.10.1] - 2026-07-18
+### Fixed
+- [Issue 869](https://github.com/aza547/wow-recorder/issues/869) - Handle unrecognized encoders without an error.
+- Fix an issue where blocked click events inside the kill video creator meant you could not interact with the timeline.
+- Fix an issue where blocked click events inside the tag dialog meant you couldn't click to move the cursor.
+
+## [7.10.0] - 2026-07-15
+### Changed
+- Toggling playback rate now descends the options rather than ascends.
+
+### Added
+- Added the instant replay feature. You can now view a recording, as it is recording, without interrupting it.
+- Add the ability to filter uploads by character name and realm.
+
+### Fixed
+- [Issue 868](https://github.com/aza547/wow-recorder/issues/868) - Fixes storage toggle responsiveness.
+
+## [7.9.0] - 2026-06-26
+### Changed
+- Update to Electron 42 and related packages.
+### Added
+- Midnight Season 2 dungeon and raid support.
+### Fixed
+- Accept `wow_anniversary` as a classic combat log path. Support for anniversary realms is still best effort but should just work in most cases.
+- Fix a bug where classic raids did not correctly calculate the boss HP.
+- Add 12.1.0 PTR flavor ('wowt') to valid retail PTR log paths.
+- Accept "Wowt.exe" as a process name in addition to "WowT.exe" for PTR clients.
+- Tooltips now don't close if clicked.
+- Fix issue where the diagnostics dialog could be hidden behind the preview on the scene tab.
+
+## [7.8.2] - 2026-06-17
+### Fixed
+- Add Rotmire to list of current encounters.
+
+## [7.8.1] - 2026-06-17
+### Added
+- Add a switch to allow disabling of NTFS checks (at users own risk).
+
+### Fixed
+- Fix boss HP tracking for Alleria and Belo'ren to not rely on English unit names.
+- Add new Mythic Flex difficulty ID for Rotmire.
+
+## [7.8.0] - 2026-06-11
+### Changed
+- Upgrade to React 19 and enable the React compiler. In theory this improves UI performance.
+
+### Added
+- Added Lindormi's Guidance affix.
+- Improve the log button to also offer a "create diagnostics bundle" function.
+
+## [7.7.3] - 2026-06-06
+### Fixed
+- [Issue 767](https://github.com/aza547/wow-recorder/issues/767) - Detect if WoW is on non-NTFS filesystem during configuration. Other filesystems, in particular exFAT are known not to work correctly with the Node watch API, which is used as the mechanism for reading combat log events.
+- [Issue 690](https://github.com/aza547/wow-recorder/issues/690) - Adds Holy priest guardian deaths to video metadata and video progress bar tracking.
+- Improve the disk space check error message to accurately reflect the space requirement when accounting for stored videos.
+- Add warning when delete selection contains locked videos.
+- Fixed a bug where classic arenas were being miscut.
+
+## [7.7.2] - 2026-05-24
+### Fixed
+- [Issue 799](https://github.com/aza547/wow-recorder/issues/799) - Fix audio sources sometimes not being removed and become duplicated.
+
+## [7.7.1] - 2026-05-19
+### Added
+- API now provides up to date keystone timers live when computing keystone result, with hardcoded timers as a fallback.
+- Add more description to the video encoder field.
+- Add a warning when using H265/AV1 without hardware rendering.
+- Enable the "followRedirects" flag on the guild websocket.
+
+
+## [7.7.0] - 2026-05-12
+### Added
+- Enable H265 encoders for AMD and Nvidia.
+- Add video encoder and size in bytes to metadata.
+
+### Fixed
+- [Issue 752](https://github.com/aza547/wow-recorder/issues/752) - Fix the timeline marker alignment on fullscreening.
+- Update Algeth'ar Academy dungeon timer again.
+- Fixed an issue where the OBS logs could scribble over themselves.
+- Improve handling of boss HP percentage on wipes, specifically for Belo'ren and Alleria.
+- Make the viewpoints column slightly wider.
+- Fix a double delete of the pre-muxed MKV in the .temp folder causing annoying errors in the logs.
+
+## [7.6.3] - 2026-04-13
+### Fixed
+- Fix the bulk download button.
+
+## [7.6.2] - 2026-04-12
+### Added
+- [Issue 695](https://github.com/aza547/wow-recorder/issues/695) - Warn users when Advanced Combat Logging is disabled in WoW settings.
+
+### Fixed
+- Fix a bug introduced in the last release where deleting videos manually didn't actually delete the file.
+- Update Algeth'ar Academy dungeon timer.
+
+## [7.6.1] - 2026-04-10
+### Changed
+- Restyled the tag dialog box to handle multiline descriptions and be scrollable.
+
+### Added
+- [Issue 805](https://github.com/aza547/wow-recorder/issues/805) - Automatically generate YouTube compatible timeline for multiview kill videos.
+
+### Fixed
+- Fix the viewpoints counter being cut off if the player name is too long.
+- Upload rendered kill videos if config specifies clip upload.
+- Fix an issue where the default storage path could interacted poorly with OneDrive.
+- Add some missing map IDs causing files to be named "Unknown Dungeon". 
+
+## [7.6.0] - 2026-03-14
+### Added
+- [Issue 777](https://github.com/aza547/wow-recorder/issues/777) - Update M+ timers for Midnight S1.
+- Cloud videos can now be directly clipped.
+- Adds the kill video creator feature.
+
+
+## [7.5.2] - 2026-02-26
+### Added
+- [Issue 797](https://github.com/aza547/wow-recorder/issues/797) - Add the new devourer spec.
+
+### Fixed
+- Validate log path shows false by default when it's meant to show true.
+- Avoid shipping a duplicate copy of ffmpeg which reduces app size by about 60MB.
+
+## [7.5.1] - 2026-01-21
+### Fixed
+- Update the parsing of COMBATANT_INFO events which changed in Midnight prepatch.
+
+## [7.5.0] - 2026-01-18
+### Added
+- A switch to disable strict log path validation.
+- Manual recording start/stop buttons on the side menu as an alternative to hotkeys.
+- [Issue 788](https://github.com/aza547/wow-recorder/issues/788) - Added the app version to the video metadata and an indicator in the frontend.
+- [Issue 754](https://github.com/aza547/wow-recorder/issues/754) - Add a timer for the currently recording activity.
+
+### Fixed
+- [Issue 789](https://github.com/aza547/wow-recorder/issues/789) - Fixes a bug where manual recordings could be interrupted by combat log events.
+- Fix a regression where the force stop button did nothing.
+
+## [7.4.0] - 2026-01-08
+### Added
+- [Issue 769](https://github.com/aza547/wow-recorder/issues/769) - Users with delete permissions can now delete chat messages.
+- [Issue 783](https://github.com/aza547/wow-recorder/issues/783) - Search for common WoW locations on initial install to auto-configure log paths.
+- [Issue 783](https://github.com/aza547/wow-recorder/issues/783) - Default storage folder to a sensible location on first time installation.
+
+### Fixed
+- [Issue 733](https://github.com/aza547/wow-recorder/issues/733) - Fix row highlighting when sorted.
+- [Issue 731](https://github.com/aza547/wow-recorder/issues/731) - Fix an issue where quickly switching between content types could fail to record.
+- [Issue 782](https://github.com/aza547/wow-recorder/issues/782) - Make video buttons more friendly in the presence of cloud/disk storage. 
+
+## [7.3.0] - 2025-12-07
+### Added
+- [Issue 777](https://github.com/aza547/wow-recorder/issues/777) - Adds Midnight M+, raids and new arena.
+- [Issue 769](https://github.com/aza547/wow-recorder/issues/769) - Enables chat for Clips and fixes for Manual categories.
+
+## [7.2.1] - 2025-11-29
+### Changed
+- [Issue 771](https://github.com/aza547/wow-recorder/issues/771) - Record in MKV as an intermediate format for better error handle characteristics.
+- [Issue 775](https://github.com/aza547/wow-recorder/issues/755) - Selected player is now sticky when changing between rows.
+
+### Added
+- [PR 768](https://github.com/aza547/wow-recorder/pull/768) - Added config for setting classic PTR. 
+- [Issue 776](https://github.com/aza547/wow-recorder/issues/776) - Patreon icon in bottom left.
+
+### Fixed
+- Improve frontend render performance on upload/download progress re-renders.
+- Fix an issue where the temporary recording folder would only get cleared out on restarts of the app.
+- [Issue 775](https://github.com/aza547/wow-recorder/issues/775) - Fixes a bug where phyiscally changing from an Nvidia to an AMD GPU or vice versa could cause the app to crash.
+
+## [7.2.0] - 2025-11-12
+### Changed
+- Moved the viewpoints selection into an expandable drawer.
+
+### Added
+- [PR 764](https://github.com/aza547/wow-recorder/pull/764) - Adds the video chat feature for Pro users.
+- Classic PTR "support". The app will accept Classic PTR paths.  As usual, PTR support is best effort.
+
+### Fixed
+- Take the latest rust-ps executable.
+- Make the debounce timer on inputting cloud login details longer so it's less annoying.
+- Fix the style of the scrollbar on the filter selection dropdown.
+- [Issue 765](https://github.com/aza547/wow-recorder/issues/765) - Allow number settings fields to be temporarily empty while changing them.
+
+## [7.1.1] - 2025-10-31
+### Fixed
+- [Issue 760](https://github.com/aza547/wow-recorder/issues/760) - Guard against invalid monitor indexes.
+- Add the `-movflags +faststart` ffmpeg flags to the final video cut to improve Cloud load speeds.
+- Fix some Korean translations that were accidentally in Chinese.
+- [Issue 759](https://github.com/aza547/wow-recorder/issues/759) - Fix issue where sleeping windows could trigger a "failed to force stop" error.
+
+## [7.1.0] - 2025-10-26
+### Added
+- [Issue 719](https://github.com/aza547/wow-recorder/issues/719) - Add the ability to bulk upload/download videos.
+
+### Fixed
+- [Issue 748](https://github.com/aza547/wow-recorder/issues/748) - Fix an issue where the auto-installer would fail to close the application.
+- [Issue 728](https://github.com/aza547/wow-recorder/issues/728) - Fix an issue where WCR could fail to load videos from disk if many thousands of videos are present.
+- Fix an issue where WCR wouldn't launch for some users with modified PATH environment variables.
+- Better adhere to Electron security best practices, videos are now served from disk in a more secure manner via a custom protocol.
+
+## [7.0.3] - 2025-10-11
+### Fixed
+- Fixes some translations and phrases in the audio settings.
+- [Issue 746](https://github.com/aza547/wow-recorder/issues/746) - Rewords the "Reset Game" button to "Auto-Fit Game". 
+- [Issue 745](https://github.com/aza547/wow-recorder/issues/745) - Fix PTT/Manual hotkeys being overly permissive.
+- [Issue 747](https://github.com/aza547/wow-recorder/issues/747) - Better client logout handling on disabled/deleted guild.
 
 ## [7.0.2] - 2025-10-01
 ### Added

@@ -12,6 +12,7 @@ import { classicArenas, retailArenas } from '../main/constants';
 import Activity from './Activity';
 import ArenaMatch from './ArenaMatch';
 import { VideoCategory } from '../types/VideoCategory';
+import { app } from 'electron';
 
 /**
  * Class representing a Solo Shuffle. This is essentially a wrapper around
@@ -103,7 +104,6 @@ export default class SoloShuffle extends Activity {
       VideoCategory.SoloShuffle,
       this.zoneID,
       Flavour.Retail,
-      this.cfg,
     );
 
     this.rounds.push(newRound);
@@ -214,6 +214,7 @@ export default class SoloShuffle extends Activity {
       overrun: this.overrun,
       start: this.startDate.getTime(),
       uniqueHash: this.getUniqueHash(),
+      appVersion: app.getVersion(),
     };
   }
 

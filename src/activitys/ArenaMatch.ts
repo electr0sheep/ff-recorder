@@ -5,6 +5,7 @@ import { Flavour, Metadata } from '../main/types';
 import { classicArenas, retailArenas } from '../main/constants';
 import Activity from './Activity';
 import { VideoCategory } from '../types/VideoCategory';
+import { app } from 'electron';
 
 /**
  * Arena match class.
@@ -92,6 +93,7 @@ export default class ArenaMatch extends Activity {
       overrun: this.overrun,
       start: this.startDate.getTime(),
       uniqueHash: this.getUniqueHash(),
+      appVersion: app.getVersion(),
     };
   }
 
@@ -136,13 +138,13 @@ export default class ArenaMatch extends Activity {
       const combatantMapSize = this.combatantMap.size;
 
       if (combatantMapSize < 5) {
-        console.log('[ArenaMatch] Setting arena category to 2v2');
+        console.info('[ArenaMatch] Setting arena category to 2v2');
         this.category = VideoCategory.TwoVTwo;
       } else if (combatantMapSize < 7) {
-        console.log('[ArenaMatch] Setting arena category to 3v3');
+        console.info('[ArenaMatch] Setting arena category to 3v3');
         this.category = VideoCategory.ThreeVThree;
       } else {
-        console.log('[ArenaMatch] Setting arena category to 5v5');
+        console.info('[ArenaMatch] Setting arena category to 5v5');
         this.category = VideoCategory.FiveVFive;
       }
     }

@@ -1,12 +1,13 @@
 import { AppState, RendererVideo } from 'main/types';
 
-import { Cell, flexRender, Header, Row, Table } from '@tanstack/react-table';
-import React, {
-  Fragment,
-  MutableRefObject,
-  useCallback,
-  useEffect,
-} from 'react';
+import {
+  Cell,
+  flexRender,
+  Header,
+  Row,
+  stockFeatures,
+} from '@tanstack/react-table';
+import React, { Fragment, RefObject, useCallback, useEffect } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -20,12 +21,18 @@ import { Button } from '../Button/Button';
 import { getLocalePhrase } from 'localisation/translations';
 import { ScrollArea } from '../ScrollArea/ScrollArea';
 import { Phrase } from 'localisation/phrases';
+import useVideoSelectionTable from './useVideoSelectionTable';
+import SelectAllShortcut from '../Shortcuts/SelectAllShortcut';
+import SelectMultiShortcut from '../Shortcuts/SelectMultiShortcut';
+import SelectRangeShortcut from '../Shortcuts/SelectRangeShortcut';
+import NavigateShortcut from '../Shortcuts/NavigateShortcut';
 
 interface IProps {
-  table: Table<RendererVideo>;
+  table: ReturnType<typeof useVideoSelectionTable>;
   appState: AppState;
   setAppState: React.Dispatch<React.SetStateAction<AppState>>;
-  persistentProgress: MutableRefObject<number>;
+  persistentProgress: RefObject<number>;
+  dialogOpen: boolean;
 }
 
 /**
@@ -33,8 +40,20 @@ interface IProps {
  * columns for a quick overview, the ability to sort by column.
  */
 const VideoSelectionTable = (props: IProps) => {
-  const { appState, setAppState, persistentProgress, table } = props;
-  const { videoFilterTags, dateRangeFilter, storageFilter } = appState;
+  const { appState, setAppState, persistentProgress, table, dialogOpen } =
+    props;
+
+  const {
+    videoFilterTags,
+    dateRangeFilter,
+    storageFilter,
+    preferredViewpoint,
+    language,
+  } = appState;
+
+  const { pageIndex, pageSize } = table.state.pagination;
+  const selectedRowRef = React.useRef<HTMLTableRowElement>(null);
+  const hasScrolledToSelection = React.useRef(false);
 
   /**
    * Mark the row as selected and update the video player to play the first
@@ -43,7 +62,7 @@ const VideoSelectionTable = (props: IProps) => {
   const onRowClick = useCallback(
     (
       event: React.MouseEvent<HTMLTableRowElement> | KeyboardEvent,
-      row: Row<RendererVideo>,
+      row: Row<typeof stockFeatures, RendererVideo>,
     ) => {
       const allRows = table.getSortedRowModel().rows;
       const selectedRows = table.getSelectedRowModel().rows;
@@ -60,14 +79,17 @@ const VideoSelectionTable = (props: IProps) => {
 
         allRows.slice(start, end).forEach((r) => {
           if (!r.getIsSelected()) {
-            r.getToggleSelectedHandler()(event);
+            r.toggleSelected(true);
           }
         });
 
         return;
       }
 
-      if (event.ctrlKey) {
+      const isClickedRowOnlySelected =
+        selectedRows.length === 1 && row.getIsSelected();
+
+      if (event.ctrlKey && !isClickedRowOnlySelected) {
         // Add a single row to the Selection.
         row.getToggleSelectedHandler()(event);
         return;
@@ -75,7 +97,20 @@ const VideoSelectionTable = (props: IProps) => {
 
       const video = row.original;
       const povs = [video, ...video.multiPov].sort(povDiskFirstNameSort);
-      persistentProgress.current = 0;
+
+      let toSelect: RendererVideo | undefined;
+
+      if (preferredViewpoint) {
+        toSelect = povs.find((pov) => pov.player?._name === preferredViewpoint);
+      }
+
+      if (!toSelect) {
+        toSelect = povs[0];
+      }
+
+      if (!row.getIsSelected()) {
+        persistentProgress.current = 0;
+      }
 
       // It's a regular click, so unselect any other selected rows.
       selectedRows.forEach((r) => {
@@ -91,12 +126,12 @@ const VideoSelectionTable = (props: IProps) => {
 
       setAppState((prevState) => ({
         ...prevState,
-        selectedVideos: povs[0] ? [povs[0]] : [],
+        selectedVideos: toSelect ? [toSelect] : [],
         multiPlayerMode: false,
         playing: false,
       }));
     },
-    [persistentProgress, setAppState, table],
+    [persistentProgress, setAppState, table, preferredViewpoint],
   );
 
   /**
@@ -106,10 +141,13 @@ const VideoSelectionTable = (props: IProps) => {
    */
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const sortedRows = table.getSortedRowModel().rows;
-      const selectedRows = table.getSelectedRowModel().rows;
+      if (event.repeat) {
+        return;
+      }
 
       if (event.key === 'a' && event.ctrlKey) {
+        const sortedRows = table.getSortedRowModel().rows;
+
         sortedRows.forEach((row) => {
           if (!row.getIsSelected()) {
             row.getToggleSelectedHandler()(event);
@@ -121,10 +159,10 @@ const VideoSelectionTable = (props: IProps) => {
         return;
       }
 
-      if (
-        (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
-        !event.repeat
-      ) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        const sortedRows = table.getSortedRowModel().rows;
+        const selectedRows = table.getSelectedRowModel().rows;
+
         if (selectedRows.length === 0) return;
 
         const currentRow =
@@ -152,33 +190,75 @@ const VideoSelectionTable = (props: IProps) => {
       if (event.shiftKey || event.ctrlKey) event.preventDefault();
     };
 
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('mousedown', handleMouseDown);
+    if (!dialogOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+      document.addEventListener('mousedown', handleMouseDown);
+    }
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('mousedown', handleMouseDown);
     };
-  }, [table, onRowClick, videoFilterTags, dateRangeFilter, storageFilter]);
+  }, [
+    table,
+    onRowClick,
+    videoFilterTags,
+    dateRangeFilter,
+    storageFilter,
+    dialogOpen,
+  ]);
+
+  // If we've navigated here programatically (i.e. via the clip source button),
+  // then we may already have a selected video that is not the first row. Just
+  // call this whenever we mount. It's harmless if the first row is selected.
+  useEffect(() => {
+    if (hasScrolledToSelection.current) {
+      return undefined;
+    }
+
+    const selectedIndex = table.getSelectedRowModel().rows[0]?.index ?? 0;
+    const selectedPageIndex = Math.floor(selectedIndex / pageSize);
+
+    if (selectedPageIndex !== pageIndex) {
+      table.setPageIndex(selectedPageIndex);
+      return undefined;
+    }
+
+    hasScrolledToSelection.current = true;
+    const animationFrame = window.requestAnimationFrame(() => {
+      if (!selectedRowRef.current) {
+        return;
+      }
+
+      selectedRowRef.current.scrollIntoView({
+        block: 'center',
+        behavior: 'smooth',
+      });
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [pageIndex, pageSize, table]);
 
   /**
    * Render an individual header.
    */
-  const renderIndividualHeader = (header: Header<RendererVideo, unknown>) => {
+  const renderIndividualHeader = (
+    header: Header<typeof stockFeatures, RendererVideo, unknown>,
+  ) => {
     let tooltip;
 
     if (header.column.getCanSort()) {
       if (header.column.getNextSortingOrder() === 'asc') {
-        tooltip = getLocalePhrase(appState.language, Phrase.ClickToSortAsc);
+        tooltip = getLocalePhrase(language, Phrase.ClickToSortAsc);
       } else if (header.column.getNextSortingOrder() === 'desc') {
-        tooltip = getLocalePhrase(appState.language, Phrase.ClickToSortDec);
+        tooltip = getLocalePhrase(language, Phrase.ClickToSortDec);
       } else {
-        tooltip = getLocalePhrase(appState.language, Phrase.ClickToClearSort);
+        tooltip = getLocalePhrase(language, Phrase.ClickToClearSort);
       }
     }
 
     if (header.id === 'Select') {
-      tooltip = getLocalePhrase(appState.language, Phrase.ClickToSelectAll);
+      tooltip = getLocalePhrase(language, Phrase.ClickToSelectAll);
     }
 
     const width =
@@ -220,7 +300,9 @@ const VideoSelectionTable = (props: IProps) => {
   /**
    * Render a cell in the base row.
    */
-  const renderBaseCell = (cell: Cell<RendererVideo, unknown>) => {
+  const renderBaseCell = (
+    cell: Cell<typeof stockFeatures, RendererVideo, unknown>,
+  ) => {
     const width =
       cell.column.getSize() === Number.MAX_SAFE_INTEGER
         ? 'auto'
@@ -236,19 +318,26 @@ const VideoSelectionTable = (props: IProps) => {
   /**
    * Render the base row.
    */
-  const renderBaseRow = (row: Row<RendererVideo>, selected: boolean) => {
+  const renderBaseRow = (
+    row: Row<typeof stockFeatures, RendererVideo>,
+    selected: boolean,
+    sortedIndex: number,
+  ) => {
     const cells = row.getVisibleCells();
-    let className = 'cursor-pointer hover:bg-secondary/80 ';
+    let className = 'cursor-pointer  ';
 
     if (selected) {
       className += 'bg-secondary/100 ';
-    } else if (row.index % 2 === 0) {
-      className += 'bg-secondary/15 ';
+    } else if (sortedIndex % 2 === 0) {
+      className += 'bg-secondary/15 hover:bg-secondary/80 ';
+    } else {
+      className += 'hover:bg-secondary/80 ';
     }
 
     return (
       <tr
         key={row.id}
+        ref={selected ? selectedRowRef : undefined}
         className={className}
         onClick={(event) => onRowClick(event, row)}
       >
@@ -260,20 +349,24 @@ const VideoSelectionTable = (props: IProps) => {
   /**
    * Render an individual row of the table.
    */
-  const renderRow = (row: Row<RendererVideo>) => {
+  const renderRow = (
+    row: Row<typeof stockFeatures, RendererVideo>,
+    sortedIndex: number,
+  ) => {
     const selected =
       row.getIsSelected() ||
       (!table.getIsSomeRowsSelected() && row.index === 0);
 
-    return <Fragment key={row.id}>{renderBaseRow(row, selected)}</Fragment>;
+    return (
+      <Fragment key={row.id}>
+        {renderBaseRow(row, selected, sortedIndex)}
+      </Fragment>
+    );
   };
 
-  /**
-   * Render the body of the selection table.
-   */
   const renderTableBody = () => {
     const { rows } = table.getRowModel();
-    return <tbody>{rows.map(renderRow)}</tbody>;
+    return <tbody>{rows.map((row, i) => renderRow(row, i))}</tbody>;
   };
 
   /**
@@ -281,51 +374,67 @@ const VideoSelectionTable = (props: IProps) => {
    * returns buttons to navigate the pages in the list.
    */
   const renderPagnationButtons = () => {
-    const current = table.getState().pagination.pageIndex + 1;
+    const current = table.state.pagination.pageIndex + 1;
     const total = table.getPageCount().toLocaleString();
     const indicator = `${current} of ${total}`;
 
     return (
-      <div className="flex w-full justify-center items-center gap-2 border-t border-video-border pt-2">
-        <Button
-          className="p-1"
-          onClick={() => table.firstPage()}
-          disabled={!table.getCanPreviousPage()}
-          size="sm"
-          variant="secondary"
-        >
-          <ChevronsLeft />
-        </Button>
-        <Button
-          className="p-1"
-          onClick={() => table.previousPage()}
-          disabled={!table.getCanPreviousPage()}
-          size="sm"
-          variant="secondary"
-        >
-          <ChevronLeft />
-        </Button>
-        <Button
-          className="p-1"
-          onClick={() => table.nextPage()}
-          disabled={!table.getCanNextPage()}
-          size="sm"
-          variant="secondary"
-        >
-          <ChevronRight />
-        </Button>
-        <Button
-          className="p-1"
-          onClick={() => table.lastPage()}
-          disabled={!table.getCanNextPage()}
-          size="sm"
-          variant="secondary"
-        >
-          <ChevronsRight />
-        </Button>
-        <span className="flex items-center gap-1">
-          <strong>{indicator}</strong>
-        </span>
+      <div className="grid w-full grid-cols-3 items-center border-t border-video-border pt-2">
+        <div className="flex gap-2">
+          <SelectRangeShortcut language={language} />
+          <SelectMultiShortcut language={language} />
+        </div>
+
+        <div className="flex justify-center items-center gap-2">
+          <Button
+            className="p-1"
+            onClick={() => table.firstPage()}
+            disabled={!table.getCanPreviousPage()}
+            size="xs"
+            variant="secondary"
+          >
+            <ChevronsLeft size={16} />
+          </Button>
+
+          <Button
+            className="p-1"
+            onClick={() => table.previousPage()}
+            disabled={!table.getCanPreviousPage()}
+            size="xs"
+            variant="secondary"
+          >
+            <ChevronLeft size={16} />
+          </Button>
+
+          <span className="flex items-center gap-1 text-foreground text-sm">
+            {indicator}
+          </span>
+
+          <Button
+            className="p-1"
+            onClick={() => table.nextPage()}
+            disabled={!table.getCanNextPage()}
+            size="xs"
+            variant="secondary"
+          >
+            <ChevronRight size={16} />
+          </Button>
+
+          <Button
+            className="p-1"
+            onClick={() => table.lastPage()}
+            disabled={!table.getCanNextPage()}
+            size="xs"
+            variant="secondary"
+          >
+            <ChevronsRight size={16} />
+          </Button>
+        </div>
+
+        <div className="justify-end flex gap-2 items-center text-foreground-lighter text-sm">
+          <NavigateShortcut language={language} />
+          <SelectAllShortcut language={language} />
+        </div>
       </div>
     );
   };
@@ -333,7 +442,7 @@ const VideoSelectionTable = (props: IProps) => {
   return (
     <div className="w-full h-full overflow-hidden px-2">
       <ScrollArea withScrollIndicators={false} className="h-full w-full">
-        <div className="pb-2 px-6">
+        <div className="pb-2 px-4">
           <table className="table-fixed w-full">
             {renderTableHeader()}
             {renderTableBody()}

@@ -1,5 +1,3 @@
-import { Checkbox } from '@mui/material';
-import { HeaderContext } from '@tanstack/react-table';
 import { getLocalePhrase } from 'localisation/translations';
 import { Language, Phrase } from 'localisation/phrases';
 import {
@@ -14,7 +12,6 @@ import {
   Trophy,
   Zap,
 } from 'lucide-react';
-import { RendererVideo } from 'main/types';
 
 export const EncounterHeader = (language: Language) => (
   <span className="inline-flex gap-x-1">
@@ -58,6 +55,13 @@ export const DateHeader = (language: Language) => (
   </span>
 );
 
+export const ClippedAtHeader = (language: Language) => (
+  <span className="inline-flex gap-x-1">
+    <CalendarDays />
+    {getLocalePhrase(language, Phrase.ClippedAtLabel)}
+  </span>
+);
+
 export const ViewpointsHeader = (language: Language) => (
   <span className="inline-flex gap-x-1">
     <Eye />
@@ -69,6 +73,13 @@ export const MapHeader = (language: Language) => (
   <span className="inline-flex gap-x-1">
     <MapPinned />
     {getLocalePhrase(language, Phrase.TableHeaderMap)}
+  </span>
+);
+
+export const LevelHeader = (language: Language) => (
+  <span className="inline-flex gap-x-1">
+    <Swords />
+    {getLocalePhrase(language, Phrase.TableHeaderDifficulty)}
   </span>
 );
 
@@ -98,26 +109,6 @@ export const ActivityHeader = (language: Language) => (
     {getLocalePhrase(language, Phrase.Activity)}
   </span>
 );
-
-export const SelectHeader = (ctx: HeaderContext<RendererVideo, unknown>) => {
-  const { table } = ctx;
-
-  return (
-    <Checkbox
-      checked={table.getIsAllRowsSelected()}
-      onClick={table.getToggleAllRowsSelectedHandler()}
-      sx={{
-        color: 'gray',
-        '&.Mui-checked': {
-          color: 'gray',
-        },
-        '&:hover': {
-          backgroundColor: 'rgba(128, 128, 128, 0.05)',
-        },
-      }}
-    />
-  );
-};
 
 export const DetailsHeader = () => (
   <span className="inline-flex gap-x-1"></span>

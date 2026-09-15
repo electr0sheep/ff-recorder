@@ -1,5 +1,10 @@
-import { CellContext } from '@tanstack/react-table';
-import { CloudStatus, RendererVideo } from 'main/types';
+import { CellContext, stockFeatures } from '@tanstack/react-table';
+import {
+  CloudStatus,
+  DialogType,
+  RendererClip,
+  RendererVideo,
+} from 'main/types';
 import {
   getVideoResultText,
   getResultColor,
@@ -18,13 +23,15 @@ import {
   getPlayerJob,
   getFFXIVJobColor,
 } from 'renderer/rendererutils';
-import { Box, Checkbox } from '@mui/material';
+import { Box } from '@mui/material';
 import { affixImages, jobImages, specImages } from 'renderer/images';
 import { Language, Phrase } from 'localisation/phrases';
 import { Button } from '../Button/Button';
 import { Tooltip } from '../Tooltip/Tooltip';
 import { getLocalePhrase } from 'localisation/translations';
 import {
+  Clapperboard,
+  ExternalLink,
   LockKeyhole,
   LockOpen,
   MessageSquare,
@@ -32,10 +39,16 @@ import {
 } from 'lucide-react';
 import { Dispatch, SetStateAction } from 'react';
 import { dungeonAffixesById } from 'main/constants';
-import TagDialog from 'renderer/TagDialog';
+import wcrIcon from '../../../../assets/icon/small-icon.png';
+import LockButton from './LockButton';
+import TagButton from './TagButton';
+import MultiLockButton from './MultiLockButton';
+import SaveIcon from '@mui/icons-material/Save';
+import CloudIcon from '@mui/icons-material/Cloud';
+import MultiTagButton from './MultiTagButton';
 
 export const populateResultCell = (
-  info: CellContext<RendererVideo, unknown>,
+  info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
   language: Language,
 ) => {
   const video = info.getValue() as RendererVideo;
@@ -53,36 +66,42 @@ export const populateResultCell = (
 };
 
 export const populateDurationCell = (
-  info: CellContext<RendererVideo, unknown>,
+  info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
 ) => {
   const rawValue = info.getValue() as RendererVideo;
   return getFormattedDuration(rawValue);
 };
 
 export const populateEncounterNameCell = (
-  info: CellContext<RendererVideo, unknown>,
+  info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
 ) => {
   const encounter = info.getValue() as string;
   return <div className="truncate">{encounter}</div>;
 };
 
-export const populateMapCell = (info: CellContext<RendererVideo, unknown>) => {
+export const populateMapCell = (
+  info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
+) => {
   const map = info.getValue() as string;
   return <div className="truncate">{map}</div>;
 };
 
-export const populateDungeonBossCell = (info: CellContext<RendererVideo, unknown>) => {
+export const populateDungeonBossCell = (
+  info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
+) => {
   const boss = info.getValue() as string;
   return <div className="truncate">{boss}</div>;
 };
 
-export const populateDateCell = (info: CellContext<RendererVideo, unknown>) => {
+export const populateDateCell = (
+  info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
+) => {
   const date = info.getValue() as Date;
   return <div className="truncate">{dateToHumanReadable(date)}</div>;
 };
 
 export const populateActivityCell = (
-  info: CellContext<RendererVideo, unknown>,
+  info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
   language: Language,
 ) => {
   const video = info.getValue() as RendererVideo;
@@ -101,146 +120,146 @@ export const populateActivityCell = (
 };
 
 export const populateDetailsCell = (
-  ctx: CellContext<RendererVideo, unknown>,
+  ctx: CellContext<typeof stockFeatures, RendererVideo, unknown>,
   language: Language,
   cloudStatus: CloudStatus,
   setVideoState: Dispatch<SetStateAction<RendererVideo[]>>,
+  setDialog: Dispatch<SetStateAction<DialogType>>,
+  setLockDialogVideoTargetId: Dispatch<SetStateAction<string | null>>,
+  setTagDialogVideoTargetId: Dispatch<SetStateAction<string | null>>,
 ) => {
-  const video = ctx.getValue() as RendererVideo;
-  const { write, del } = cloudStatus;
+  const video = ctx.row.original;
+  const group = [video, ...video.multiPov];
 
-  const renderProtectedIcon = () => {
-    // If any videos in our selection are not protected, then the button's
-    // action is to protect.
-    const toProtect = [video, ...video.multiPov];
-    const lock = !toProtect.every((v) => v.isProtected);
+  return (
+    <Box className="inline-flex">
+      {group.length > 1 ? (
+        <MultiLockButton
+          language={language}
+          parent={video}
+          setDialog={setDialog}
+          setLockDialogVideoTargetId={setLockDialogVideoTargetId}
+        />
+      ) : (
+        <LockButton
+          language={language}
+          cloudStatus={cloudStatus}
+          video={video}
+          setVideoState={setVideoState}
+        />
+      )}
 
-    // Disable the protect button if there are no selected viewpoints, or if
-    // the action is to unprotect and we don't have delete permissions.
-    const noPermission = !del && !lock && toProtect.some((v) => v.cloud);
-    const disabled = noPermission || toProtect.length < 1;
+      {group.length > 1 ? (
+        <MultiTagButton
+          language={language}
+          parent={video}
+          setDialog={setDialog}
+          setTagDialogVideoTargetId={setTagDialogVideoTargetId}
+        />
+      ) : (
+        <TagButton
+          language={language}
+          cloudStatus={cloudStatus}
+          video={video}
+          setDialog={setDialog}
+          setTagDialogVideoTargetId={setTagDialogVideoTargetId}
+        />
+      )}
+    </Box>
+  );
+};
 
-    const icon = lock ? <LockOpen size={20} /> : <LockKeyhole size={20} />;
+export const populateSourceCell = (
+  ctx: CellContext<typeof stockFeatures, RendererVideo, unknown>,
+  language: Language,
+  getClipParent: (clip: RendererClip) => RendererVideo | undefined,
+  goToClipParent: (clip: RendererClip) => void,
+) => {
+  const clip = ctx.getValue() as RendererClip;
+  const parent = getClipParent(clip);
+  const disabled = parent === undefined;
 
-    let tooltip = '';
+  const tooltip = disabled
+    ? getLocalePhrase(language, Phrase.ClipSourceUnavailableTooltip)
+    : getLocalePhrase(language, Phrase.ClipSourceTooltip);
 
-    if (noPermission) {
-      tooltip = getLocalePhrase(language, Phrase.GuildNoPermission);
-    } else if (lock) {
-      tooltip = getLocalePhrase(language, Phrase.StarSelected);
-    } else {
-      tooltip = getLocalePhrase(language, Phrase.UnstarSelected);
-    }
+  const goToSource = (e: React.MouseEvent<HTMLButtonElement>) => {
+    stopPropagation(e);
+    goToClipParent(clip);
+  };
 
-    const toggleProtected = (e: React.MouseEvent<HTMLButtonElement>) => {
-      stopPropagation(e);
-
-      window.electron.ipcRenderer.sendMessage('videoButton', [
-        'protect',
-        lock,
-        toProtect,
-      ]);
-
-      setVideoState((prev) => {
-        const state = [...prev];
-
-        state.forEach((rv) => {
-          // A video is uniquely identified by its name and storage type.
-          const match = toProtect.find(
-            (v) => v.videoName === rv.videoName && v.cloud === rv.cloud,
-          );
-
-          if (match) {
-            rv.isProtected = lock;
-          }
-        });
-
-        return state;
-      });
-    };
-
-    return (
+  return (
+    <Box className="inline-flex">
       <Tooltip content={tooltip}>
         <div>
           <Button
             variant="ghost"
             size="xs"
-            onClick={toggleProtected}
+            onClick={goToSource}
             disabled={disabled}
           >
-            {icon}
+            <ExternalLink size={18} />
           </Button>
         </div>
       </Tooltip>
+    </Box>
+  );
+};
+
+export const populateKillVideoCell = (
+  ctx: CellContext<typeof stockFeatures, RendererVideo, unknown>,
+  language: Language,
+  setDialog: Dispatch<SetStateAction<DialogType>>,
+  setKillVideoDialogVideoTargetId: Dispatch<SetStateAction<string | null>>,
+) => {
+  const video = ctx.getValue() as RendererVideo;
+  const cloud = [video, ...video.multiPov].filter((rv) => rv.cloud);
+  const disk = [video, ...video.multiPov].filter((rv) => !rv.cloud);
+  const disabled = disk.length < 2;
+
+  let tooltip = getLocalePhrase(language, Phrase.KillVideoCreatorTooltip);
+
+  if (disabled && cloud.length + disk.length > 1) {
+    tooltip = getLocalePhrase(
+      language,
+      Phrase.KillVideoCreatorTooltipNotEnoughLocal,
     );
-  };
-
-  const renderTagIcon = () => {
-    const toTag = [video, ...video.multiPov];
-    const noPermission = !write && toTag.some((v) => v.cloud);
-
-    let tag = '';
-    let icon = <MessageSquare size={18} />;
-
-    let tooltip = noPermission
-      ? getLocalePhrase(language, Phrase.GuildNoPermission)
-      : getLocalePhrase(language, Phrase.TagButtonTooltip);
-
-    const foundTag = toTag.map((v) => v.tag).find((t) => t);
-
-    if (foundTag) {
-      tag = foundTag;
-      icon = <MessageSquareMore size={18} />;
-
-      if (tag.length > 50) {
-        tooltip = `${tag.slice(0, 50)}...`;
-      } else {
-        tooltip = tag;
-      }
-    }
-
-    return (
-      <Tooltip content={tooltip}>
-        <div onClick={(e) => e.stopPropagation()}>
-          <TagDialog
-            initialTag={tag}
-            videos={toTag}
-            setVideoState={setVideoState}
-            language={language}
-          >
-            <Button variant="ghost" size="xs" disabled={noPermission}>
-              {icon}
-            </Button>
-          </TagDialog>
-        </div>
-      </Tooltip>
+  } else if (disabled) {
+    tooltip = getLocalePhrase(
+      language,
+      Phrase.KillVideoCreatorTooltipNotEnoughPov,
     );
-  };
+  }
 
   return (
     <Box className="inline-flex">
-      {renderProtectedIcon()}
-      {renderTagIcon()}
+      <Tooltip content={tooltip}>
+        <Button
+          variant="ghost"
+          size="xs"
+          disabled={disabled}
+          onClick={(event) => {
+            stopPropagation(event);
+            setKillVideoDialogVideoTargetId(video.uniqueId);
+            setDialog(DialogType.KILL);
+          }}
+        >
+          <Clapperboard size={18} />
+        </Button>
+      </Tooltip>
     </Box>
   );
 };
 
 export const populateLevelCell = (
-  info: CellContext<RendererVideo, unknown>,
+  info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
 ) => {
   const video = info.getValue() as RendererVideo;
   return `+${video.keystoneLevel || video.level || 0}`;
 };
 
-export const populateFFXIVDifficultyCell = (
-  info: CellContext<RendererVideo, unknown>,
-) => {
-  const video = info.getValue() as RendererVideo;
-  return `${video.difficulty || 'Normal'}`;
-};
-
 export const populateAffixesCell = (
-  info: CellContext<RendererVideo, unknown>,
+  info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
 ) => {
   const video = info.getValue() as RendererVideo;
 
@@ -277,7 +296,7 @@ export const populateAffixesCell = (
 };
 
 export const populateViewpointCell = (
-  info: CellContext<RendererVideo, unknown>,
+  info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
 ) => {
   const video = info.getValue() as RendererVideo;
   const count = countUniqueViewpoints(video);
@@ -294,118 +313,200 @@ export const populateViewpointCell = (
     return <div>{count}</div>;
   }
 
-  if (player._specID) {
-    const playerName = getPlayerName(first);
-    const playerClass = getPlayerClass(first);
-    const playerClassColor = getWoWClassColor(playerClass);
-    const playerSpecID = getPlayerSpecID(first);
-    const specIcon = specImages[playerSpecID as keyof typeof specImages];
+  let playerName = getPlayerName(first);
+  let playerColor: string;
+  let playerIcon: string;
 
-    const renderSpecAndName = () => {
-      return (
-        <>
-          <Box
-            key={player._GUID}
-            component="img"
-            src={specIcon}
-            sx={{
-              display: 'flex',
-              height: '25px',
-              width: '25px',
-              border: '1px solid black',
-              borderRadius: '15%',
-              boxSizing: 'border-box',
-              objectFit: 'cover',
-            }}
-          />
-          <div
-            className="font-sans font-semibold text-md text-shadow-instance mx-1"
-            style={{ color: playerClassColor }}
-          >
-            {playerName}
-          </div>
-        </>
-      );
-    };
-
-    const renderRemainingCount = () => {
-      if (count > 1) return <div>{`+${count - 1}`}</div>;
-      return <></>;
-    };
-
-    return (
-      <div className="flex truncate">
-        {renderSpecAndName()}
-        {renderRemainingCount()}
-      </div>
-    );
-  } else if (player._job) {
-    const playerName = getPlayerName(first);
+  if (player._job) {
+    // An FFXIV viewpoint, coloured by job role.
     const playerJob = getPlayerJob(first);
-    const playerJobColor = getFFXIVJobColor(playerJob);
-    const jobIcon = jobImages[playerJob.toString() as keyof typeof jobImages];
-
-    const renderJobAndName = () => {
-      return (
-        <>
-          <Box
-            key={player._GUID}
-            component="img"
-            src={jobIcon}
-            sx={{
-              display: 'flex',
-              height: '25px',
-              width: '25px',
-              border: '1px solid black',
-              borderRadius: '15%',
-              boxSizing: 'border-box',
-              objectFit: 'cover',
-            }}
-          />
-          <div
-            className="font-sans font-semibold text-md text-shadow-instance mx-1"
-            style={{ color: playerJobColor }}
-          >
-            {playerName}
-          </div>
-        </>
-      );
-    };
-
-    const renderRemainingCount = () => {
-      if (count > 1) return <div>{`+${count - 1}`}</div>;
-      return <></>;
-    };
-
-    return (
-      <div className="flex truncate">
-        {renderJobAndName()}
-        {renderRemainingCount()}
-      </div>
-    );
+    playerColor = getFFXIVJobColor(playerJob);
+    playerIcon = jobImages[playerJob as keyof typeof jobImages];
   } else {
-    return <div>{count}</div>;
+    const playerClass = getPlayerClass(first);
+    const playerSpecID = getPlayerSpecID(first);
+    playerColor = getWoWClassColor(playerClass);
+    playerIcon = specImages[playerSpecID as keyof typeof specImages];
   }
+
+  if (playerName === 'WCR Multipov Name') {
+    playerName = 'Multiview';
+    playerColor = '#bb4420';
+    playerIcon = wcrIcon;
+  }
+
+  const renderIconAndName = () => {
+    return (
+      <>
+        <Box
+          key={player._GUID}
+          component="img"
+          src={playerIcon}
+          className="bg-background-higher"
+          sx={{
+            display: 'flex',
+            height: '25px',
+            width: '25px',
+            border: '1px solid black',
+            borderRadius: '15%',
+            boxSizing: 'border-box',
+            objectFit: 'cover',
+          }}
+        />
+        <div
+          className="font-sans font-semibold text-md text-shadow-instance mx-1 truncate"
+          style={{ color: playerColor }}
+        >
+          {playerName}
+        </div>
+      </>
+    );
+  };
+
+  const renderRemainingCount = () => {
+    if (count > 1) return <div>{`+${count - 1}`}</div>;
+    return <></>;
+  };
+
+  return (
+    <div className="flex truncate">
+      {renderIconAndName()}
+      {renderRemainingCount()}
+    </div>
+  );
 };
 
-export const populateSelectCell = (
-  ctx: CellContext<RendererVideo, unknown>,
+export const populateTagCell = (
+  ctx: CellContext<typeof stockFeatures, RendererVideo, unknown>,
 ) => {
   const { row } = ctx;
-  return (
-    <Checkbox
-      checked={row.getIsSelected()}
-      onClick={row.getToggleSelectedHandler()}
-      onDoubleClick={stopPropagation}
+  const { tag } = row.original;
+
+  const icon = tag ? (
+    <MessageSquareMore size={18} />
+  ) : (
+    <MessageSquare size={18} />
+  );
+
+  return <div className="flex justify-center items-center">{icon}</div>;
+};
+
+export const populateStorageCell = (
+  ctx: CellContext<typeof stockFeatures, RendererVideo, unknown>,
+) => {
+  const { row } = ctx;
+  const { cloud } = row.original;
+
+  const icon = cloud ? (
+    <CloudIcon
       sx={{
-        color: 'gray',
-        '&.Mui-checked': {
-          color: 'gray',
-        },
-        '&:hover': {
-          backgroundColor: 'rgba(128, 128, 128, 0.05)',
-        },
+        height: '18px',
+        width: '18px',
+        color: 'white',
+        opacity: 0.3,
+        marginBottom: '3px',
       }}
     />
+  ) : (
+    <SaveIcon
+      sx={{
+        height: '18px',
+        width: '18px',
+        color: 'white',
+        opacity: 0.3,
+        marginBottom: '3px',
+      }}
+    />
+  );
+
+  return <div className="flex justify-center items-center">{icon}</div>;
+};
+
+export const populatePlayerCell = (
+  info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
+  language: Language,
+) => {
+  const video = info.getValue() as RendererVideo;
+  const { player } = video;
+
+  if (!player || !player._specID) {
+    return <div>{getLocalePhrase(language, Phrase.Unknown)}</div>;
+  }
+
+  const playerClass = getPlayerClass(video);
+  const playerSpecID = getPlayerSpecID(video);
+  const playerName = getPlayerName(video);
+  const playerClassColor = getWoWClassColor(playerClass);
+  const specIcon = specImages[playerSpecID as keyof typeof specImages];
+
+  const renderSpecAndName = () => {
+    return (
+      <div className="flex items-center pl-2 min-w-0">
+        <Box
+          component="img"
+          src={specIcon}
+          className="bg-background-higher shrink-0"
+          sx={{
+            height: '25px',
+            width: '25px',
+            border: '1px solid black',
+            borderRadius: '15%',
+            boxSizing: 'border-box',
+            objectFit: 'cover',
+          }}
+        />
+
+        <div
+          className="font-sans font-semibold text-sm text-shadow-instance mx-1 truncate min-w-0"
+          style={{ color: playerClassColor }}
+        >
+          {playerName}
+        </div>
+      </div>
+    );
+  };
+
+  return <div className="flex truncate">{renderSpecAndName()}</div>;
+};
+
+export const populateTagStatusCell = (
+  info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
+  language: Language,
+) => {
+  const { row } = info;
+  const { tag } = row.original;
+  const text = tag ? tag : getLocalePhrase(language, Phrase.NoCustomTag);
+  return <div className="truncate text-sm mx-2">{text}</div>;
+};
+
+export const populateLockCell = (
+  ctx: CellContext<typeof stockFeatures, RendererVideo, unknown>,
+) => {
+  const video = ctx.getValue() as RendererVideo;
+  const { isProtected } = video;
+
+  const icon = isProtected ? <LockKeyhole size={18} /> : <LockOpen size={18} />;
+
+  return <div className="flex justify-center items-center">{icon}</div>;
+};
+
+export const populateLockedStatusCell = (
+  info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
+  language: Language,
+) => {
+  const { row } = info;
+  const { isProtected } = row.original;
+
+  if (isProtected) {
+    return (
+      <div className="flex truncate text-sm">
+        {getLocalePhrase(language, Phrase.SafeFromAutomaticDeletion)}
+      </div>
+    );
+  }
+  return (
+    <div className="flex truncate text-sm">
+      {getLocalePhrase(language, Phrase.EligibleForAutomaticDeletion)}
+    </div>
   );
 };

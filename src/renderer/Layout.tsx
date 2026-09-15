@@ -1,10 +1,18 @@
 import * as React from 'react';
-import { Pages, RecStatus, AppState, RendererVideo } from 'main/types';
-import { Dispatch, MutableRefObject, SetStateAction } from 'react';
+import {
+  CombatLoggingStatus,
+  Pages,
+  RecStatus,
+  AppState,
+  RendererVideo,
+  InstantReplayState,
+} from 'main/types';
+import { Dispatch, RefObject, SetStateAction } from 'react';
 import { ConfigurationSchema } from 'config/configSchema';
 import SceneEditor from './SceneEditor';
 import SettingsPage from './SettingsPage';
 import CategoryPage from './CategoryPage';
+import InstantReplay from './InstantReplay';
 
 interface IProps {
   recorderStatus: RecStatus;
@@ -12,10 +20,15 @@ interface IProps {
   setVideoState: Dispatch<SetStateAction<RendererVideo[]>>;
   appState: AppState;
   setAppState: Dispatch<SetStateAction<AppState>>;
-  persistentProgress: MutableRefObject<number>;
-  playerHeight: MutableRefObject<number>;
+  persistentProgress: RefObject<number>;
+  playerHeight: RefObject<number>;
   config: ConfigurationSchema;
   setConfig: Dispatch<SetStateAction<ConfigurationSchema>>;
+  combatLoggingStatus: CombatLoggingStatus;
+  previewEnabled: boolean;
+  setPreviewEnabled: Dispatch<SetStateAction<boolean>>;
+  instantReplayState: InstantReplayState;
+  setInstantReplayState: Dispatch<SetStateAction<InstantReplayState>>;
 }
 
 /**
@@ -32,12 +45,18 @@ const Layout = (props: IProps) => {
     playerHeight,
     config,
     setConfig,
+    combatLoggingStatus,
+    previewEnabled,
+    setPreviewEnabled,
+    instantReplayState,
+    setInstantReplayState,
   } = props;
   const { page, category } = appState;
 
   const renderCategoryPage = () => {
     return (
       <CategoryPage
+        key={category}
         category={category}
         videoState={videoState}
         setVideoState={setVideoState}
@@ -57,6 +76,8 @@ const Layout = (props: IProps) => {
         setConfig={setConfig}
         appState={appState}
         setAppState={setAppState}
+        combatLoggingStatus={combatLoggingStatus}
+        videoState={videoState}
       />
     );
   };
@@ -68,6 +89,21 @@ const Layout = (props: IProps) => {
         appState={appState}
         config={config}
         setConfig={setConfig}
+        previewEnabled={previewEnabled}
+        setPreviewEnabled={setPreviewEnabled}
+      />
+    );
+  };
+
+  const renderInstantReplay = () => {
+    return (
+      <InstantReplay
+        instantReplayState={instantReplayState}
+        setInstantReplayState={setInstantReplayState}
+        appState={appState}
+        setAppState={setAppState}
+        persistentProgress={persistentProgress}
+        config={config}
       />
     );
   };
@@ -76,7 +112,8 @@ const Layout = (props: IProps) => {
     <>
       {page === Pages.Settings && renderSettingsPage()}
       {page === Pages.SceneEditor && renderSceneEditor()}
-      {[Pages.None, Pages.WoW, Pages.FFXIV].includes(page) && renderCategoryPage()}
+      {page === Pages.InstantReplay && renderInstantReplay()}
+      {page === Pages.None && renderCategoryPage()}
     </>
   );
 };

@@ -7,6 +7,7 @@ import {
   CloudConfig,
   Flavour,
   AudioSource,
+  CharacterFilter,
 } from 'main/types';
 import path from 'path';
 import ConfigService from '../config/ConfigService';
@@ -25,6 +26,7 @@ import {
   isFolderOwned,
   takeOwnershipBufferDir,
   takeOwnershipStorageDir,
+  getDriveFormat,
 } from 'main/util';
 
 const allowRecordCategory = (cfg: ConfigService, category: VideoCategory) => {
@@ -148,6 +150,46 @@ const shouldUpload = (cfg: ConfigService, metadata: Metadata) => {
     }
   }
 
+  const characterFilters = cfg.get<CharacterFilter[]>('characterUploadFilters');
+
+  if (characterFilters.length > 0) {
+    const { player } = metadata;
+
+    if (!player) {
+      console.info(
+        '[configUtils] Not uploading as character filter enabled but player undefined',
+      );
+      return false;
+    }
+
+    const { _name, _realm } = player;
+
+    if (!_name || !_realm) {
+      console.info(
+        '[configUtils] Not uploading as character filter enabled but player name or realm falsy',
+        _name,
+        _realm,
+      );
+      return false;
+    }
+
+    const matched = characterFilters.some((filter) => {
+      return (
+        filter.name.toLowerCase() === _name.toLowerCase() &&
+        filter.realm.toLowerCase() === _realm.toLowerCase()
+      );
+    });
+
+    if (!matched) {
+      console.info(
+        '[configUtils] Not uploading as did not match character filter',
+        _name,
+        _realm,
+      );
+      return false;
+    }
+  }
+
   console.info('[configUtils] Good to upload:', category);
   return true;
 };
@@ -193,7 +235,9 @@ const getBaseConfig = (cfg: ConfigService): BaseConfig => {
     obsQuality: cfg.get<string>('obsQuality'),
     obsRecEncoder,
     recordClassic: cfg.get<boolean>('recordClassic'),
+    recordClassicPtr: cfg.get<boolean>('recordClassicPtr'),
     classicLogPath: cfg.get<string>('classicLogPath'),
+    classicPtrLogPath: cfg.get<string>('classicPtrLogPath'),
     recordRetail: cfg.get<boolean>('recordRetail'),
     recordRetailPtr: cfg.get<boolean>('recordRetailPtr'),
     retailLogPath: cfg.get<string>('retailLogPath'),
@@ -202,6 +246,7 @@ const getBaseConfig = (cfg: ConfigService): BaseConfig => {
     retailPtrLogPath: cfg.get<string>('retailPtrLogPath'),
     recordFFXIV: cfg.get<boolean>('recordFFXIV'),
     FFXIVWebSocketURL: cfg.get<string>('FFXIVWebSocketURL'),
+    validateLogPaths: cfg.get<boolean>('validateLogPaths'),
   };
 };
 
@@ -259,6 +304,42 @@ const getLocaleError = (phrase: Phrase) => {
   return getLocalePhrase(lang, phrase);
 };
 
+const validateLogPathFilesystem = async (
+  logPath: string,
+  logPathLabel: Phrase,
+) => {
+  if (!ConfigService.getInstance().get<boolean>('validateNtfs')) {
+    console.warn('[Util] Skipping NTFS filesystem check for', logPath);
+    return;
+  }
+
+  const driveFormat = await getDriveFormat(logPath);
+
+  if (!driveFormat) {
+    // The above can return undefined. If it does just log it and move
+    // on. We don't want to block the whole setup if for example powershell
+    // isn't available for some reason.
+    console.warn('[Util] Skipping NTFS filesystem check for', logPath);
+    return;
+  }
+
+  // NTFS is the only supported filesystem for reading the combat log due
+  // to our reliance on the Node watch API.
+  if (driveFormat.toLowerCase() !== 'ntfs') {
+    console.error(
+      '[Util] Unsupported filesystem for WoW log path',
+      driveFormat,
+      logPath,
+    );
+
+    const error = `${getLocaleError(logPathLabel)}: ${getLocaleError(
+      Phrase.UnsupportedWowFilesystem,
+    )}`;
+
+    throw new Error(error);
+  }
+};
+
 const validateBaseConfig = async (config: BaseConfig) => {
   const {
     storagePath,
@@ -269,9 +350,12 @@ const validateBaseConfig = async (config: BaseConfig) => {
     recordRetailPtr,
     retailPtrLogPath,
     recordClassic,
+    recordClassicPtr,
     classicLogPath,
+    classicPtrLogPath,
     recordEra,
     eraLogPath,
+    validateLogPaths,
   } = config;
 
   if (!storagePath) {
@@ -340,55 +424,103 @@ const validateBaseConfig = async (config: BaseConfig) => {
   }
 
   if (recordRetail) {
-    const validFlavours = ['wow'];
-    const validPath =
-      validFlavours.includes(getWowFlavour(retailLogPath)) &&
-      path.basename(retailLogPath) === 'Logs';
+    const validRetailFlavours = ['wow'];
 
-    if (!validPath) {
+    const validFlavor = validateLogPaths
+      ? validRetailFlavours.includes(getWowFlavour(retailLogPath))
+      : true;
+
+    const validPath = path.basename(retailLogPath) === 'Logs';
+    const valid = validFlavor && validPath;
+
+    if (!valid) {
       console.error('[Util] Invalid retail log path', retailLogPath);
       const error = getLocaleError(Phrase.InvalidRetailLogPath);
       throw new Error(error);
     }
+
+    await validateLogPathFilesystem(retailLogPath, Phrase.RetailLogPathLabel);
   }
 
   if (recordRetailPtr) {
-    const validFlavours = ['wowxptr', 'wow_beta'];
-    const validPath =
-      validFlavours.includes(getWowFlavour(retailPtrLogPath)) &&
-      path.basename(retailPtrLogPath) === 'Logs';
+    const validRetailPtrFlavours = ['wowxptr', 'wow_beta', 'wowt'];
 
-    if (!validPath) {
+    const validFlavor = validateLogPaths
+      ? validRetailPtrFlavours.includes(getWowFlavour(retailPtrLogPath))
+      : true;
+
+    const validPath = path.basename(retailPtrLogPath) === 'Logs';
+    const valid = validFlavor && validPath;
+
+    if (!valid) {
       console.error('[Util] Invalid retail PTR log path', retailPtrLogPath);
       const error = getLocaleError(Phrase.InvalidRetailPtrLogPathText);
       throw new Error(error);
     }
+
+    await validateLogPathFilesystem(
+      retailPtrLogPath,
+      Phrase.RetailPtrLogPathLabel,
+    );
   }
 
   if (recordClassic) {
-    const validFlavours = ['wow_classic', 'wow_classic_beta'];
-    const validPath =
-      validFlavours.includes(getWowFlavour(classicLogPath)) &&
-      path.basename(classicLogPath) === 'Logs';
+    const validClassicFlavours = ['wow_classic', 'wow_anniversary'];
 
-    if (!validPath) {
+    const validFlavour = validateLogPaths
+      ? validClassicFlavours.includes(getWowFlavour(classicLogPath))
+      : true;
+
+    const validPath = path.basename(classicLogPath) === 'Logs';
+    const valid = validFlavour && validPath;
+
+    if (!valid) {
       console.error('[Util] Invalid classic log path', classicLogPath);
       const error = getLocaleError(Phrase.InvalidClassicLogPath);
       throw new Error(error);
     }
+
+    await validateLogPathFilesystem(classicLogPath, Phrase.ClassicLogPathLabel);
+  }
+
+  if (recordClassicPtr) {
+    const validClassicPtrFlavours = ['wow_classic_beta', 'wow_classic_ptr'];
+    const validFlavor = validateLogPaths
+      ? validClassicPtrFlavours.includes(getWowFlavour(classicPtrLogPath))
+      : true;
+
+    const validPath = path.basename(classicPtrLogPath) === 'Logs';
+    const valid = validFlavor && validPath;
+
+    if (!valid) {
+      console.error('[Util] Invalid classic PTR log path', classicPtrLogPath);
+      const error = getLocaleError(Phrase.InvalidClassicPtrLogPath);
+      throw new Error(error);
+    }
+
+    await validateLogPathFilesystem(
+      classicPtrLogPath,
+      Phrase.ClassicPtrLogPathLabel,
+    );
   }
 
   if (recordEra) {
-    const validFlavours = ['wow_classic_era'];
-    const validPath =
-      validFlavours.includes(getWowFlavour(eraLogPath)) &&
-      path.basename(eraLogPath) === 'Logs';
+    const validEraFlavours = ['wow_classic_era', 'wow_classic_era_ptr'];
 
-    if (!validPath) {
+    const validFlavour = validateLogPaths
+      ? validEraFlavours.includes(getWowFlavour(eraLogPath))
+      : true;
+
+    const validPath = path.basename(eraLogPath) === 'Logs';
+    const valid = validFlavour && validPath;
+
+    if (!valid) {
       console.error('[Util] Invalid era log path', eraLogPath);
       const error = getLocaleError(Phrase.InvalidEraLogPath);
       throw new Error(error);
     }
+
+    await validateLogPathFilesystem(eraLogPath, Phrase.ClassicEraLogPathLabel);
   }
 };
 

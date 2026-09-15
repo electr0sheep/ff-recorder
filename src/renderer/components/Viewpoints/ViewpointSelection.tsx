@@ -1,8 +1,8 @@
 import { Box } from '@mui/material';
 import { AppState, RawCombatant, RendererVideo } from 'main/types';
-import { X } from 'lucide-react';
+import { Ban, X } from 'lucide-react';
 import { specializationById, WoWCharacterClassType } from 'main/constants';
-import { Dispatch, MutableRefObject, SetStateAction } from 'react';
+import { Dispatch, RefObject, SetStateAction } from 'react';
 import {
   getWoWClassColor,
   stopPropagation,
@@ -20,7 +20,7 @@ interface IProps {
   video: RendererVideo;
   appState: AppState;
   setAppState: Dispatch<SetStateAction<AppState>>;
-  persistentProgress: MutableRefObject<number>;
+  persistentProgress: RefObject<number>;
 }
 
 export default function ViewpointSelection(props: IProps) {
@@ -150,6 +150,10 @@ export default function ViewpointSelection(props: IProps) {
           multiPlayerMode: s.length > 1 ? mode : false,
           // Always pause if changing selections in multiplayer mode.
           playing: multiPlayerMode ? false : playing,
+          // Update the preferred viewpoint to the newly selected player. This
+          // means the video table will also update so switching between videos
+          // will stick to the same player.
+          preferredViewpoint: selection.player?._name || '',
         };
       });
     };
@@ -229,18 +233,6 @@ export default function ViewpointSelection(props: IProps) {
 
     const friendly = combatants.filter((c) => c._teamID === player._teamID);
     const enemy = combatants.filter((c) => c._teamID !== player._teamID);
-    let gridClass = 'grid my-1 mx-1 ';
-
-    // some tailwind shenanigans going on here when I try to do this more dynamically.
-    // pretty sure it's scanning these files to decide what to bundle so needs these
-    // hardcoded.
-    if (friendly.length === 2) {
-      gridClass += 'grid-rows-2';
-    } else if (friendly.length === 3) {
-      gridClass += 'grid-rows-3';
-    } else {
-      gridClass += 'grid-rows-5';
-    }
 
     const renderVsIcon = () => {
       return (
@@ -251,17 +243,18 @@ export default function ViewpointSelection(props: IProps) {
     };
 
     return (
-      <div className="flex flex-row items-center">
-        <div className={gridClass}>{friendly.map(mapCombatants)}</div>
+      <div className="flex flex-col items-center">
+        <div className="flex flex-row">{friendly.map(mapCombatants)}</div>
         {!isSoloShuffleUtil(povs[0]) && renderVsIcon()}
-        <div className={gridClass}>{enemy.map(mapCombatants)}</div>
+        <div className="flex flex-row">{enemy.map(mapCombatants)}</div>
       </div>
     );
   };
 
   if (combatants.length === 0) {
     return (
-      <div className="p-2 text-secondary-foreground text-sm">
+      <div className="flex flex-col items-center justify-center p-2 text-foreground font-bold text-sm">
+        <Ban size={35} className="mb-2" />
         {getLocalePhrase(appState.language, Phrase.NoCombatants)}
       </div>
     );
@@ -273,7 +266,7 @@ export default function ViewpointSelection(props: IProps) {
   }
 
   return (
-    <div className="grid grid-cols-5 my-1 mx-1">
+    <div className="grid grid-cols-5">
       {combatants.sort(combatantNameSort).map(mapCombatants)}
     </div>
   );

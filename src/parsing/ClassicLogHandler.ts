@@ -5,7 +5,6 @@ import {
   classicUniqueSpecSpells,
   mopChallengeModes,
 } from '../main/constants';
-
 import LogHandler from './LogHandler';
 import { Flavour } from '../main/types';
 import ArenaMatch from '../activitys/ArenaMatch';
@@ -24,43 +23,35 @@ export default class ClassicLogHandler extends LogHandler {
   constructor(logPath: string) {
     super(logPath, 2);
 
+    /* eslint-disable prettier/prettier */
     this.combatLogWatcher
-      .on('ENCOUNTER_START', async (line: LogLine) => {
-        await this.handleEncounterStartLine(line);
-      })
-      .on('ENCOUNTER_END', async (line: LogLine) => {
-        await this.handleEncounterEndLine(line);
-      })
-      .on('ZONE_CHANGE', async (line: LogLine) => {
-        await this.handleZoneChange(line);
-      })
-      .on('SPELL_AURA_APPLIED', (line: LogLine) => {
-        this.handleSpellAuraAppliedLine(line);
-      })
-      .on('UNIT_DIED', (line: LogLine) => {
-        this.handleUnitDiedLine(line);
-      })
-      .on('SPELL_CAST_SUCCESS', (line: LogLine) => {
-        this.handleSpellCastSuccess(line);
-      })
-      .on('COMBATANT_INFO', async (line: LogLine) => {
-        await this.handleCombatantInfoLine(line);
-      })
-      .on('CHALLENGE_MODE_START', async (line: LogLine) => {
-        await this.handleChallengeModeStartLine(line);
-      })
-      .on('CHALLENGE_MODE_END', async (line: LogLine) => {
-        await this.handleChallengeModeEndLine(line);
-      });
+      .on('ENCOUNTER_START',      (line: LogLine) => { this.logProcessQueue.add(async () => this.handleEncounterStartLine(line)) })
+      .on('ENCOUNTER_END',        (line: LogLine) => { this.logProcessQueue.add(async () => this.handleEncounterEndLine(line)) })
+      .on('ZONE_CHANGE',          (line: LogLine) => { this.logProcessQueue.add(async () => this.handleZoneChange(line)) })
+      .on('SPELL_AURA_APPLIED',   (line: LogLine) => { this.logProcessQueue.add(async () => this.handleSpellAuraAppliedLine(line)) })
+      .on('UNIT_DIED',            (line: LogLine) => { this.logProcessQueue.add(async () => this.handleUnitDiedLine(line)) })
+      .on('SPELL_CAST_SUCCESS',   (line: LogLine) => { this.logProcessQueue.add(async () => this.handleSpellCastSuccess(line)) })
+      .on('COMBATANT_INFO',       (line: LogLine) => { this.logProcessQueue.add(async () => this.handleCombatantInfoLine(line)) })
+      .on('CHALLENGE_MODE_START', (line: LogLine) => { this.logProcessQueue.add(async () => this.handleChallengeModeStartLine(line)) })
+      .on('CHALLENGE_MODE_END',   (line: LogLine) => { this.logProcessQueue.add(async () => this.handleChallengeModeEndLine(line)) })
+      .on('SPELL_DAMAGE',         (line: LogLine) => { this.logProcessQueue.add(async () => this.handleSpellDamage(line)); });
+    /* eslint-enable prettier/prettier */
   }
 
   protected async handleEncounterStartLine(line: LogLine) {
     console.debug('[ClassicLogHandler] Handling ENCOUNTER_START line:', line);
+
+    if (this.isManual()) {
+      console.info('[ClassicLogHandler] Ignoring line as in manual recording');
+      return;
+    }
+
     await super.handleEncounterStartLine(line, Flavour.Classic);
   }
 
   private handleSpellAuraAppliedLine(line: LogLine) {
-    if (!LogHandler.activity) {
+    if (!LogHandler.activity || this.isManual()) {
+      // Deliberately don't log anything here as we can hit this a lot
       return;
     }
 
@@ -71,9 +62,6 @@ export default class ClassicLogHandler extends LogHandler {
     const destFlags = line.arg(7);
     const destNameRealm = line.arg(6);
     const spellName = line.arg(10);
-
-    const alreadyKnowCombatant =
-      LogHandler.activity.getCombatant(srcGUID) !== undefined;
 
     const combatant = this.processClassicCombatant(
       srcGUID,
@@ -87,24 +75,6 @@ export default class ClassicLogHandler extends LogHandler {
     if (combatant === undefined) {
       // It's not an event we want to add a combatant for.
       return;
-    }
-
-    const isEnemyCombatant = combatant.teamID === 0;
-
-    // If it's the first time we have spotted an enemy combatant in arena,
-    // then the gates have just opened. Adjust the activity start time.
-    if (this.isArena() && !alreadyKnowCombatant && isEnemyCombatant) {
-      const combatants = LogHandler.activity.combatantMap.values();
-      const enemyCombatants = [...combatants].filter((c) => c.teamID === 0);
-
-      if (enemyCombatants.length === 1) {
-        const newStartDate = line.date();
-        console.info(
-          '[ClassicLogHandler] Adjusting game start date:',
-          newStartDate,
-        );
-        LogHandler.activity.startDate = newStartDate;
-      }
     }
 
     if (combatant.specID === undefined) {
@@ -121,6 +91,11 @@ export default class ClassicLogHandler extends LogHandler {
 
   private async handleZoneChange(line: LogLine) {
     console.info('[ClassicLogHandler] Handling ZONE_CHANGE line:', line);
+
+    if (this.isManual()) {
+      console.info('[ClassicLogHandler] Ignoring line as in manual recording');
+      return;
+    }
 
     const zoneID = parseInt(line.arg(1), 10);
 
@@ -163,7 +138,8 @@ export default class ClassicLogHandler extends LogHandler {
   }
 
   protected handleUnitDiedLine(line: LogLine) {
-    if (!LogHandler.activity) {
+    if (!LogHandler.activity || this.isManual()) {
+      // Deliberately don't log anything here as we can hit this a lot
       return;
     }
 
@@ -184,7 +160,8 @@ export default class ClassicLogHandler extends LogHandler {
   }
 
   private handleSpellCastSuccess(line: LogLine) {
-    if (!LogHandler.activity) {
+    if (!LogHandler.activity || this.isManual()) {
+      // Deliberately don't log anything here as we can hit this a lot
       return;
     }
 
@@ -423,6 +400,11 @@ export default class ClassicLogHandler extends LogHandler {
   private handleCombatantInfoLine(line: LogLine) {
     console.debug('[ClassicLogHandler] Handling COMBATANT_INFO line:', line);
 
+    if (this.isManual()) {
+      console.info('[ClassicLogHandler] Ignoring line as in manual recording');
+      return;
+    }
+
     if (!LogHandler.activity) {
       console.warn(
         '[ClassicLogHandler] No activity in progress, ignoring COMBATANT_INFO',
@@ -456,6 +438,11 @@ export default class ClassicLogHandler extends LogHandler {
       '[ClassicLogHandler] Handling CHALLENGE_MODE_START line:',
       line,
     );
+
+    if (this.isManual()) {
+      console.info('[ClassicLogHandler] Ignoring line as in manual recording');
+      return;
+    }
 
     if (
       LogHandler.activity &&
@@ -510,6 +497,11 @@ export default class ClassicLogHandler extends LogHandler {
       '[ClassicLogHandler] Handling CHALLENGE_MODE_END line:',
       line,
     );
+
+    if (this.isManual()) {
+      console.info('[ClassicLogHandler] Ignoring line as in manual recording');
+      return;
+    }
 
     if (!LogHandler.activity) {
       console.error(

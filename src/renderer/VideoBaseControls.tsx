@@ -8,16 +8,17 @@ import {
 } from 'react';
 import { AppState, Encoder, RecStatus } from 'main/types';
 import { obsResolutions } from 'main/constants';
-import { configSchema } from 'config/configSchema';
+import { configSchema, ConfigurationSchema } from 'config/configSchema';
 import { ESupportedEncoders, QualityPresets } from 'main/obsEnums';
 import { Info, Wand } from 'lucide-react';
 import { getLocalePhrase } from 'localisation/translations';
-import { useSettings, setConfigValues } from './useSettings';
+import { setConfigValues } from './useSettings';
 import {
   encoderFilter,
   isHighRes,
   mapEncoderToString,
   mapStringToEncoder,
+  translateQuality,
 } from './rendererutils';
 import Label from './components/Label/Label';
 import {
@@ -45,6 +46,8 @@ interface IProps {
   recorderStatus: RecStatus;
   appState: AppState;
   setPreviewEnabled: Dispatch<SetStateAction<boolean>>;
+  config: ConfigurationSchema;
+  setConfig: Dispatch<SetStateAction<ConfigurationSchema>>;
 }
 
 /**
@@ -58,11 +61,16 @@ interface IProps {
  *   - Otherwise, let the user do whatever they want.
  */
 const VideoBaseControls: FC<IProps> = (props: IProps) => {
-  const [config, setConfig] = useSettings();
-  const { recorderStatus, appState, setPreviewEnabled } = props;
+  const { recorderStatus, appState, setPreviewEnabled, config, setConfig } =
+    props;
+  const { language } = appState;
   const initialRender = useRef(true);
   const highRes = isHighRes(config.obsOutputResolution);
   const [encoders, setEncoders] = useState<Encoder[]>([]);
+
+  // This is the current value the app was launched with.
+  const [hardwareAcceleration, setHardwareAcceleration] =
+    useState<boolean>(true);
 
   useEffect(() => {
     const getAvailableEncoders = async () => {
@@ -76,7 +84,13 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
       setEncoders(availableEncoders);
     };
 
+    const getHardwareAccel = async () => {
+      const value = await ipc.getHardwareAcceleration();
+      setHardwareAcceleration(value);
+    };
+
     getAvailableEncoders();
+    getHardwareAccel();
 
     // The reset of this effect handles config changes, so if it's the
     // initial render then just return here.
@@ -136,10 +150,10 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
     return (
       <div className="flex flex-col w-1/4 min-w-40 max-w-60">
         <Label className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.CanvasResolutionLabel)}
+          {getLocalePhrase(language, Phrase.CanvasResolutionLabel)}
           <Tooltip
             content={getLocalePhrase(
-              appState.language,
+              language,
               configSchema.obsOutputResolution.description,
             )}
             side="right"
@@ -154,7 +168,9 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
           disabled={isComponentDisabled()}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select a resolution" />
+            <SelectValue
+              placeholder={getLocalePhrase(language, Phrase.SelectResolution)}
+            />
           </SelectTrigger>
           <SelectContent side="right" position="popper">
             {outputResolutions.map((resolution) => (
@@ -189,12 +205,9 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
     return (
       <div>
         <Label className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.FPSLabel)}
+          {getLocalePhrase(language, Phrase.FPSLabel)}
           <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.obsFPS.description,
-            )}
+            content={getLocalePhrase(language, configSchema.obsFPS.description)}
             side="right"
           >
             <Info size={20} className="inline-flex ml-2" />
@@ -236,7 +249,7 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
 
     return (
       <TextBanner>
-        {getLocalePhrase(appState.language, Phrase.SettingsDisabledText)}
+        {getLocalePhrase(language, Phrase.SettingsDisabledText)}
       </TextBanner>
     );
   };
@@ -246,30 +259,15 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
       return <></>;
     }
 
-    const translateQuality = (p: QualityPresets) => {
-      switch (p) {
-        case QualityPresets.ULTRA:
-          return getLocalePhrase(appState.language, Phrase.Ultra);
-        case QualityPresets.HIGH:
-          return getLocalePhrase(appState.language, Phrase.High);
-        case QualityPresets.MODERATE:
-          return getLocalePhrase(appState.language, Phrase.Moderate);
-        case QualityPresets.LOW:
-          return getLocalePhrase(appState.language, Phrase.Low);
-        default:
-          throw new Error('Unknown quality');
-      }
-    };
-
     const options = Object.values(QualityPresets);
 
     return (
       <div className="flex flex-col w-1/4 min-w-40 max-w-60">
         <Label className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.QualityLabel)}
+          {getLocalePhrase(language, Phrase.QualityLabel)}
           <Tooltip
             content={getLocalePhrase(
-              appState.language,
+              language,
               configSchema.obsQuality.description,
             )}
             side="right"
@@ -284,12 +282,14 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
           disabled={isComponentDisabled()}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select quality" />
+            <SelectValue
+              placeholder={getLocalePhrase(language, Phrase.SelectQuality)}
+            />
           </SelectTrigger>
           <SelectContent>
             {options.map((option) => (
               <SelectItem key={option} value={option}>
-                {translateQuality(option)}
+                {translateQuality(option, language)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -322,16 +322,45 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
       return <></>;
     }
 
+    let tooltip = getLocalePhrase(
+      language,
+      configSchema.obsRecEncoder.description,
+    );
+
+    // H264 is always available.
+    tooltip += '\n\n';
+    tooltip += getLocalePhrase(language, Phrase.CodecDescriptionH264);
+
+    const values = encoders.map((e) => e.value);
+
+    if (
+      values.includes(ESupportedEncoders.AMD_H265) ||
+      values.includes(ESupportedEncoders.NVENC_H265)
+    ) {
+      // Include H265 description if it's available.
+      tooltip += '\n\n';
+      tooltip += getLocalePhrase(language, Phrase.CodecDescriptionH265);
+    }
+
+    if (
+      values.includes(ESupportedEncoders.AMD_AV1) ||
+      values.includes(ESupportedEncoders.NVENC_AV1) ||
+      values.includes(ESupportedEncoders.QSV_AV1)
+    ) {
+      // Include AV1 description if it's available.
+      tooltip += '\n\n';
+      tooltip += getLocalePhrase(language, Phrase.CodecDescriptionAV1);
+    }
+
     return (
       <div className="flex flex-col w-1/4 min-w-60 max-w-80">
         <Label className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.VideoEncoderLabel)}
+          {getLocalePhrase(language, Phrase.VideoEncoderLabel)}
           <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.obsRecEncoder.description,
-            )}
-            side="right"
+            content={tooltip}
+            side="bottom"
+            maxWidth={600}
+            className="whitespace-pre-line"
           >
             <Info size={20} className="inline-flex ml-2" />
           </Tooltip>
@@ -344,21 +373,20 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
             disabled={isComponentDisabled()}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select encoder" />
+              <SelectValue
+                placeholder={getLocalePhrase(language, Phrase.SelectEncoder)}
+              />
             </SelectTrigger>
             <SelectContent>
               {encoders.map((encoder) => (
                 <SelectItem key={encoder.name} value={encoder.value}>
-                  {mapEncoderToString(encoder, appState.language)}
+                  {mapEncoderToString(encoder, language)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              Phrase.AutoSelectEncoderTooltip,
-            )}
+            content={getLocalePhrase(language, Phrase.AutoSelectEncoderTooltip)}
             side="right"
           >
             <Button variant="ghost" onClick={autoSelectEncoder}>
@@ -370,8 +398,31 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
     );
   };
 
+  const getHardwareAccelerationWarning = () => {
+    // Show the warning re hardware acceleration if if either the app was
+    // launched without it (most likely), or the user has disabled it (less
+    // likely, but will cause issues on next app launch).
+    const showCodecWarning =
+      (!hardwareAcceleration || !config.hardwareAcceleration) &&
+      (config.obsRecEncoder === ESupportedEncoders.AMD_H265 ||
+        config.obsRecEncoder === ESupportedEncoders.AMD_AV1 ||
+        config.obsRecEncoder === ESupportedEncoders.NVENC_H265 ||
+        config.obsRecEncoder === ESupportedEncoders.NVENC_AV1 ||
+        config.obsRecEncoder === ESupportedEncoders.QSV_AV1);
+
+    if (!showCodecWarning) {
+      return <></>;
+    }
+
+    return (
+      <span className="text-error text-sm">
+        {getLocalePhrase(appState.language, Phrase.CodecNeedsHardwareRendering)}
+      </span>
+    );
+  };
+
   return (
-    <div className="flex flex-col items-center w-full">
+    <div className="flex flex-col items-start w-fullg gap-y-4">
       {getDisabledText()}
       <div className="flex items-center w-full gap-x-8">
         {getFPSToggle()}
@@ -379,6 +430,7 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
         {getQualitySelect()}
         {getEncoderSelect()}
       </div>
+      {getHardwareAccelerationWarning()}
     </div>
   );
 };

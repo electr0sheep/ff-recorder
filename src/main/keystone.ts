@@ -10,6 +10,7 @@ type RawDungeonTimelineSegment = {
   encounterId?: number;
   logEnd?: string;
   result?: string;
+  name?: string; // Boss name, used by FFXIV segments which have no encounterId.
 };
 
 class DungeonTimelineSegment {
@@ -22,6 +23,7 @@ class DungeonTimelineSegment {
     public logStart: Date,
     public timestamp: number,
     public encounterId?: number,
+    public name?: string,
   ) {
     // Initially, let's set this to log start date to avoid logEnd
     // potentially being undefined.
@@ -42,6 +44,10 @@ class DungeonTimelineSegment {
 
     if (this.encounterId !== undefined) {
       rawSegment.encounterId = this.encounterId;
+    }
+
+    if (this.name !== undefined) {
+      rawSegment.name = this.name;
     }
 
     return rawSegment;

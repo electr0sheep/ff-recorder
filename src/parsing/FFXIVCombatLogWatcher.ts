@@ -129,6 +129,13 @@ export default class FFXIVCombatLogWatcher extends EventEmitter {
       this.reconnectTimer = undefined;
     }
 
+    // No more data is coming, so the data timeout is meaningless now. The
+    // Manager force ends any activity when the game stops.
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
+
     if (this.ws) {
       this.ws.close();
       this.ws = undefined;
@@ -262,21 +269,28 @@ export default class FFXIVCombatLogWatcher extends EventEmitter {
         );
         this.gameState.inCombat = inGameCombat;
         this.gameState.timestamp = new Date();
+        // Emit so the handler can pick up a pull already in progress when we
+        // connect; the state is re-sent in response to cactbotRequestState.
+        this.emit('cactbotCombatChange', Boolean(inGameCombat));
       } else if (message.type === 'onPlayerChangedEvent' && message.detail) {
+        // This fires on any change to the player (HP, position, etc), so
+        // only pass it on when the character actually changes.
         const rawId = message.detail.id as number;
         const playerId = rawId ? rawId.toString(16).toUpperCase() : '';
-        if (playerId && !this.gameState.playerId) {
+        const playerName = message.detail.name as string | undefined;
+        if (playerId && playerId !== this.gameState.playerId) {
           console.info(
             '[FFXIVCombatLogWatcher] Received player changed event, id:',
             playerId,
           );
           this.gameState.playerId = playerId;
-          this.emit('cactbotPlayerChange', playerId);
+          this.emit('cactbotPlayerChange', playerId, playerName);
         }
       } else if (message.type === 'PartyChanged') {
         const party = (message as unknown as { party: PartyMember[] }).party;
         if (party) {
-          console.info(
+          // Noisy, this can fire every second while in a duty.
+          console.debug(
             '[FFXIVCombatLogWatcher] Received party changed event, members:',
             party.length,
           );

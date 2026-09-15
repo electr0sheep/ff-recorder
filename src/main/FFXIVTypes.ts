@@ -25,6 +25,7 @@ enum LogType {
   RAID_MARKER = '28',
   TARGET_MARKER = '29',
   BUFF_REMOVE = '30',
+  DIRECTOR = '33',
   UPDATE_HP = '39',
   // TARGET_CHANGE = '37',
   DEBUG = '251',

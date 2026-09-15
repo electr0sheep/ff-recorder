@@ -56,6 +56,10 @@ export default class FFXIVBossEncounter extends Activity {
     return this._bossName;
   }
 
+  set bossName(name: string) {
+    this._bossName = name;
+  }
+
   get resultInfo() {
     if (this.result === undefined) {
       throw new Error(

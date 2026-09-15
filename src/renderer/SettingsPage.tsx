@@ -157,7 +157,10 @@ const SettingsPage: React.FC<IProps> = (props: IProps) => {
                   )}
                 </CategoryHeading>
                 <Separator className="mt-2 mb-4" />
-                <FFXIVSettings appState={appState} />
+                <FFXIVSettings
+                  recorderStatus={recorderStatus}
+                  appState={appState}
+                />
               </div>
             </div>
           </TabsContent>

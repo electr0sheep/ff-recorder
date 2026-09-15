@@ -3,23 +3,18 @@ import FFXIVLogLine from './FFXIVLogLine';
 import {
   ContentFinderSettingsLine,
   AddCombatantLine,
+  RemoveCombatantLine,
   ChangePrimaryPlayerLine,
   LogLineLine,
   DeathLine,
   InCombatLine,
-  BuffLine,
+  UpdateHpLine,
+  DirectorLine,
 } from './FFXIVParsedLogLines';
 import Combatant from 'main/Combatant';
 import { zones, BNpcNameIdToNameMap } from 'main/FFXIVConstants';
 import Activity from 'activitys/Activity';
-import {
-  LogType,
-  ContentType,
-  Zone,
-  Difficulty,
-  FFXIVGameState,
-  Job,
-} from 'main/FFXIVTypes';
+import { LogType, ContentType, Zone, Difficulty, Job } from 'main/FFXIVTypes';
 import FFXIVDungeon from 'activitys/FFXIVDungeon';
 import { PlayerDeathType } from 'main/types';
 import { DungeonTimelineSegment, TimelineSegmentType } from 'main/keystone';
@@ -27,168 +22,192 @@ import { VideoCategory } from 'types/VideoCategory';
 import FFXIVBossEncounter from 'activitys/FFXIVBossEncounter';
 import { PartyMember } from './FFXIVCombatLogWatcher';
 
-// everything seems to be off by 3 seconds
-const OFFSET = 0;
+/**
+ * How a territory gets recorded.
+ */
+enum RecordMode {
+  /** Not recorded. */
+  None,
 
+  /** The whole duty is one video: dungeons and deep dungeons. */
+  Run,
+
+  /**
+   * Each pull is a video, delimited by the in-game combat flag and the duty
+   * director: trials, raids (including ultimates) and chaotic alliance raids.
+   */
+  Combat,
+
+  /**
+   * Each boss is a video, delimited by the arena being sealed off: alliance
+   * raids, variant and criterion dungeons, which all have trash in between.
+   */
+  Sealed,
+}
 
 /**
- * FFXIVLogHandler class.
+ * A boss actor we've seen spawn in the current duty. Bosses spawn with a
+ * pile of helper actors sharing their name, so every actor is tracked and
+ * the living one with the most HP is treated as the real boss.
  */
+type BossActor = {
+  id: string;
+  nameId: number;
+  name: string;
+  maxHp: number;
+  dead: boolean;
+};
 
-// TODO: I'm not sure the log types with id > 260 will work without IINACT, so probably need to not use them
+/**
+ * How long to wait after a combat drop before treating it as the end of a
+ * pull. The director and chat lines that carry the result arrive slightly
+ * before the combat flag drops, and this also rides out brief drops.
+ */
+const COMBAT_END_GRACE_MS = 5000;
+
+/**
+ * FFXIVLogHandler class. Turns the IINACT log stream into activities.
+ */
 export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
-  currentZone: Zone | undefined = undefined;
-  currentCombatants: Combatant[] = [];
-  playerGUID: string | undefined;
-  shouldRecordOnCombat: boolean = false;
-  currentPull: number = 0;
-  currentBossId: [number, string] | undefined;
-  private playerDeaths: number = 0;
-  private isRecoveringState: boolean = false;
+  private currentZone: Zone | undefined;
+
+  private mode = RecordMode.None;
+
+  /** Party members, keyed by actor ID. */
+  private currentCombatants = new Map<string, Combatant>();
+
+  private playerGUID: string | undefined;
+
+  private playerName: string | undefined;
+
+  private currentPull = 0;
+
+  /** Boss actors seen in the current duty, keyed by actor ID. */
+  private bossActors = new Map<string, BossActor>();
+
+  /** The actor we consider the real boss, see BossActor. */
+  private primaryBoss: BossActor | undefined;
+
+  private bossKilledThisPull = false;
+
+  /** A pull end waiting out the grace period, see COMBAT_END_GRACE_MS. */
+  private pendingEnd: { timer: NodeJS.Timeout; timestamp: Date } | undefined;
+
+  /** Last combat state reported by Cactbot, used for recovery on connect. */
+  private cactbotInCombat = false;
+
+  /** Every boss name we know, for matching deaths of actors we never saw spawn. */
+  private static bossNames = new Set(Array.from(BNpcNameIdToNameMap.values()));
 
   constructor(wsUrl: string) {
     super(wsUrl, 10);
 
-    // Recover state from existing log files before processing new events
-    this.recoverState();
+    this.onLine(LogType.CONTENT_FINDER_SETTINGS, (line) =>
+      this.handleContentFinderSettings(line),
+    );
 
-    this.combatLogWatcher.on(
-      LogType.CONTENT_FINDER_SETTINGS,
-      async (line: FFXIVLogLine) => {
-        await this.handleContentFinderSettings(line);
-      },
-    );
-    this.combatLogWatcher.on(
-      LogType.ADD_COMBATANT,
-      async (line: FFXIVLogLine) => {
-        await this.handleAddCombatant(line);
-      },
-    );
-    this.combatLogWatcher.on(
-      LogType.CHANGE_PRIMARY_PLAYER,
-      async (line: FFXIVLogLine) => {
-        await this.handlePlayer(line);
-      },
-    );
-    this.combatLogWatcher.on(LogType.LOG_LINE, async (line: FFXIVLogLine) => {
-      await this.handleChat(line);
-    });
-    this.combatLogWatcher.on(LogType.DEATH, async (line: FFXIVLogLine) => {
-      await this.handleDeath(line);
-    });
-    this.combatLogWatcher.on(LogType.IN_COMBAT, async (line: FFXIVLogLine) => {
-      await this.handleInCombat(line);
-    });
-    this.combatLogWatcher.on(LogType.BUFF, async (line: FFXIVLogLine) => {
-      this.handleBuff(line);
-    });
+    this.onLine(LogType.ADD_COMBATANT, (line) => this.handleAddCombatant(line));
 
-    // Listen for Cactbot zone change events (for state recovery when app starts mid-dungeon)
+    this.onLine(LogType.REMOVE_COMBATANT, (line) =>
+      this.handleRemoveCombatant(line),
+    );
+
+    this.onLine(LogType.CHANGE_PRIMARY_PLAYER, (line) =>
+      this.handlePlayer(line),
+    );
+
+    this.onLine(LogType.LOG_LINE, (line) => this.handleChat(line));
+    this.onLine(LogType.DEATH, (line) => this.handleDeath(line));
+    this.onLine(LogType.IN_COMBAT, (line) => this.handleInCombat(line));
+    this.onLine(LogType.UPDATE_HP, (line) => this.handleUpdateHp(line));
+    this.onLine(LogType.DIRECTOR, (line) => this.handleDirector(line));
+
+    // Cactbot state events. These are re-sent when we connect (in response
+    // to cactbotRequestState), which is how we pick up a duty that is
+    // already in progress when the app or IINACT starts.
     this.combatLogWatcher.on('cactbotZoneChange', (zoneName: string) => {
-      this.handleCactbotZoneChange(zoneName);
+      this.handleCactbotZoneChange(zoneName).catch((error) =>
+        console.error('[FFXIVLogHandler] Cactbot zone change failed', error),
+      );
     });
 
-    // Listen for Cactbot player change events to set playerGUID on startup
-    this.combatLogWatcher.on('cactbotPlayerChange', (playerId: string) => {
-      this.playerGUID = playerId;
-      if (FFXIVGenericLogHandler.activity && !FFXIVGenericLogHandler.activity.playerGUID) {
-        FFXIVGenericLogHandler.activity.playerGUID = playerId;
-      }
+    this.combatLogWatcher.on('cactbotCombatChange', (inCombat: boolean) => {
+      this.handleCactbotCombatChange(inCombat).catch((error) =>
+        console.error('[FFXIVLogHandler] Cactbot combat change failed', error),
+      );
     });
 
-    // Listen for party change events to populate combatants
+    this.combatLogWatcher.on(
+      'cactbotPlayerChange',
+      (playerId: string, playerName?: string) => {
+        this.setPlayer(playerId, playerName);
+      },
+    );
+
     this.combatLogWatcher.on('partyChanged', (party: PartyMember[]) => {
       this.handlePartyChanged(party);
     });
   }
 
-  private async handleContentFinderSettings(line: FFXIVLogLine) {
-    console.debug('[FFXIVLogHandler] handleContentFinderSettings');
-    const parsed = new ContentFinderSettingsLine(line);
-    const territory = zones.find((zone) => zone.id === parsed.zoneId);
-    if (!territory) {
-      console.debug('[FFXIVLogHandler] no territory. Ending recording');
-      this.currentZone = undefined;
-      this.currentCombatants = [];
-      this.shouldRecordOnCombat = false;
-      this.currentPull = 0;
-      this.endRecording(line, false);
-      return;
-    }
-    this.currentZone = territory;
-    if (territory.difficulty === Difficulty.Ultimate) {
-      console.debug('[FFXIVLogHandler] starting ultimate');
-      this.shouldRecordOnCombat = true;
-    } else if (territory.difficulty === Difficulty.Chaotic) {
-      console.debug('[FFXIVLogHandler] starting chaotic');
-      this.shouldRecordOnCombat = true;
-    } else if (territory.type === ContentType.Trial) {
-      console.debug('[FFXIVLogHandler] starting trial');
-      this.shouldRecordOnCombat = true;
-    } else if (territory.type === ContentType.Raid) {
-      console.debug('[FFXIVLogHandler] starting raid');
-      this.shouldRecordOnCombat = true;
-    } else if (territory.type === ContentType['Deep Dungeon']) {
-      console.debug('[FFXIVLogHandler] starting deep dungeon');
-      const activity = new FFXIVDungeon(
-        parsed.timestamp,
-        territory.name,
-        territory.difficulty,
-        VideoCategory.FFXIVDeepDungeons,
-      );
-      const segment = new DungeonTimelineSegment(
-        TimelineSegmentType.Trash,
-        parsed.timestamp,
-        0,
-      );
-      activity.addTimelineSegment(segment);
-      this.startRecording(activity);
-    } else if (territory.type === ContentType.Dungeon) {
-      console.debug('[FFXIVLogHandler] starting dungeon');
-      const activity = new FFXIVDungeon(
-        parsed.timestamp,
-        territory.name,
-        territory.difficulty,
-        VideoCategory.FFXIVDungeons,
-      );
-      const segment = new DungeonTimelineSegment(
-        TimelineSegmentType.Trash,
-        parsed.timestamp,
-        0,
-      );
-      activity.addTimelineSegment(segment);
-      this.startRecording(activity);
-    } else if (territory.type === ContentType['Alliance Raid']) {
-      console.debug('[FFXIVLogHandler] starting alliance raid');
-      this.shouldRecordOnCombat = true;
-    } else if (territory.type === ContentType['Variant Dungeon']) {
-      console.debug('[FFXIVLogHandler] starting variant dungeon');
-      this.shouldRecordOnCombat = true;
-    } else if (territory.type === ContentType['Criterion Dungeon']) {
-      console.debug('[FFXIVLogHandler] starting criterion dungeon');
-      this.shouldRecordOnCombat = true;
-    }
+  public destroy() {
+    this.clearPendingEnd();
+    super.destroy();
   }
 
   /**
-   * Handle zone change events from Cactbot. This is used for state recovery
-   * when the app starts mid-dungeon, since we won't receive a CONTENT_FINDER_SETTINGS
-   * log line in that case.
+   * Subscribe to a log line type. The watcher doesn't await listeners, so
+   * errors have to be caught here or they vanish as unhandled rejections.
    */
-  private handleCactbotZoneChange(zoneName: string) {
-    // If we already have a zone set from CONTENT_FINDER_SETTINGS, don't override it
-    // since that's more precise (has zone ID)
-    if (this.currentZone) {
-      console.debug(
-        '[FFXIVLogHandler] Cactbot zone change ignored, already have zone:',
-        this.currentZone.name,
+  private onLine(
+    type: LogType,
+    handler: (line: FFXIVLogLine) => void | Promise<void>,
+  ) {
+    this.combatLogWatcher.on(type, async (line: FFXIVLogLine) => {
+      try {
+        await handler(line);
+      } catch (error) {
+        console.error(
+          `[FFXIVLogHandler] Error handling log type ${type}:`,
+          error,
+          line.original,
+        );
+      }
+    });
+  }
+
+  /**
+   * Zone changes arrive as a 265 line from IINACT, with the zone ID.
+   * Anything not in the zone table is treated as leaving duty content.
+   */
+  private async handleContentFinderSettings(line: FFXIVLogLine) {
+    const parsed = new ContentFinderSettingsLine(line);
+    const territory = zones.find((zone) => zone.id === parsed.zoneId);
+
+    if (!territory) {
+      console.info(
+        '[FFXIVLogHandler] Not a recorded territory:',
+        parsed.zoneName,
       );
+
+      await this.leaveTerritory(parsed.timestamp);
       return;
     }
 
-    // Try to find the zone by name (rawName matches Cactbot's zone name format)
-    // rawName is lowercase "the X" while name is "The X"
+    await this.enterTerritory(territory, parsed.timestamp);
+  }
+
+  /**
+   * Cactbot zone events only carry the name, and a 265 line follows them
+   * during normal play anyway, so this only matters when we don't know the
+   * zone yet, i.e. we connected while a duty was in progress.
+   */
+  private async handleCactbotZoneChange(zoneName: string) {
+    if (this.currentZone) {
+      return;
+    }
+
     const normalizedName = zoneName.toLowerCase();
+
     const territory = zones.find(
       (zone) =>
         zone.rawName.toLowerCase() === normalizedName ||
@@ -196,592 +215,670 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     );
 
     if (!territory) {
-      console.debug(
-        '[FFXIVLogHandler] Cactbot zone change: no matching zone found for:',
-        zoneName,
-      );
+      console.debug('[FFXIVLogHandler] No recorded territory named:', zoneName);
       return;
     }
 
+    console.info('[FFXIVLogHandler] Cactbot zone matched:', territory.name);
+    await this.enterTerritory(territory, new Date());
+
+    // If Cactbot already told us we're in combat, we've joined mid-pull.
+    if (this.cactbotInCombat) {
+      await this.handleCombatChange(true, new Date());
+    }
+  }
+
+  private async enterTerritory(territory: Zone, timestamp: Date) {
+    if (this.currentZone?.id === territory.id) {
+      // Duplicate zone info, e.g. the 265 line following a Cactbot event, or
+      // IINACT re-emitting the zone on start. Nothing to do.
+      return;
+    }
+
+    if (FFXIVGenericLogHandler.activity) {
+      // Moving straight between two recorded territories, e.g. deep dungeon
+      // floor sets. Close out the current video first.
+      console.info('[FFXIVLogHandler] New territory mid-activity, ending it');
+      await this.endRecording(timestamp, true);
+    }
+
+    this.resetPullState();
+    this.currentZone = territory;
+    this.mode = FFXIVLogHandler.getRecordMode(territory);
+
     console.info(
-      '[FFXIVLogHandler] Cactbot zone change: matched zone:',
+      '[FFXIVLogHandler] Entered',
       territory.name,
       'type:',
       ContentType[territory.type],
+      'mode:',
+      RecordMode[this.mode],
     );
 
-    this.currentZone = territory;
-
-    // Set up recording flags based on content type (same logic as handleContentFinderSettings)
-    if (
-      territory.type === ContentType.Trial ||
-      territory.type === ContentType.Raid ||
-      territory.type === ContentType['Variant Dungeon'] ||
-      territory.type === ContentType['Criterion Dungeon'] ||
-      territory.type === ContentType['Alliance Raid'] ||
-      territory.difficulty === Difficulty.Ultimate
-    ) {
-      this.shouldRecordOnCombat = true;
-      console.info(
-        '[FFXIVLogHandler] Cactbot zone change: enabled shouldRecordOnCombat for',
-        territory.name,
-      );
+    if (this.mode === RecordMode.Run) {
+      await this.startRun(territory, timestamp);
     }
   }
 
-  private async handleAddCombatant(line: FFXIVLogLine) {
-    // console.debug('[FFXIVLogHandler] handleAddCombatant');
-    if (!this.currentZone) return;
+  private async leaveTerritory(timestamp: Date) {
+    if (FFXIVGenericLogHandler.activity) {
+      // Nothing signalled a completion before we left, so whatever was in
+      // progress is a wipe or an abandon.
+      console.info('[FFXIVLogHandler] Left territory mid-activity, ending it');
+      await this.endRecording(timestamp, false);
+    }
 
-    const parsed = new AddCombatantLine(line);
+    this.resetPullState();
+    this.currentZone = undefined;
+    this.mode = RecordMode.None;
 
-    // Enemies are combatants who don't have a job
-    // TODO: NOPE. Memoriates of darkness in the lunar subterannae are Gladiators.
-    if (parsed.isPlayer()) {
-      console.log('[FFXIVLogHandler] combatant has a job');
-      const combatant = new Combatant(parsed.actorId);
-      combatant.name = parsed.name;
-      combatant.job = parsed.job;
-      this.currentCombatants.push(combatant);
-      if (FFXIVGenericLogHandler.activity) {
-        FFXIVGenericLogHandler.activity.addCombatant(combatant);
-      }
-    } else {
-      // TODO: The problem is there are like 9 duplicate combatants
-      // Note: BNpcBaseIdToNameMap actually contains BNpcNameIDs, not BNpcBaseIDs
-      if (BNpcNameIdToNameMap.has(parsed.npcNameId)) {
-        console.debug(
-          `[FFXIVLogHandler] setting current boss: ${BNpcNameIdToNameMap.get(parsed.npcNameId)}`,
-        );
-        this.currentBossId = [parsed.npcNameId, parsed.actorId];
-      }
+    // The party gets re-sent by IINACT, but keep ourselves around so a solo
+    // player is never missing from the combatants.
+    const self = this.playerGUID
+      ? this.currentCombatants.get(this.playerGUID)
+      : undefined;
+
+    this.currentCombatants.clear();
+
+    if (self) {
+      this.currentCombatants.set(self.GUID, self);
     }
   }
 
-  private handlePartyChanged(party: PartyMember[]) {
-    const partyMembers = party.filter((m) => m.inParty);
-    console.info(
-      '[FFXIVLogHandler] Party changed, members:',
-      partyMembers.length,
+  private resetPullState() {
+    this.clearPendingEnd();
+    this.currentPull = 0;
+    this.bossActors.clear();
+    this.primaryBoss = undefined;
+    this.bossKilledThisPull = false;
+  }
+
+  private static getRecordMode(zone: Zone): RecordMode {
+    if (zone.difficulty === Difficulty.Chaotic) {
+      // A single boss that resets on a wipe, so it behaves like a raid.
+      return RecordMode.Combat;
+    }
+
+    switch (zone.type) {
+      case ContentType.Trial:
+      case ContentType.Raid:
+        return RecordMode.Combat;
+      case ContentType['Alliance Raid']:
+      case ContentType['Variant Dungeon']:
+      case ContentType['Criterion Dungeon']:
+        return RecordMode.Sealed;
+      case ContentType.Dungeon:
+      case ContentType['Deep Dungeon']:
+        return RecordMode.Run;
+      default:
+        return RecordMode.None;
+    }
+  }
+
+  private static getCategory(zone: Zone): VideoCategory | undefined {
+    if (zone.difficulty === Difficulty.Chaotic) {
+      return VideoCategory.FFXIVAllianceRaids;
+    }
+
+    switch (zone.type) {
+      case ContentType.Trial:
+        return VideoCategory.FFXIVTrials;
+      case ContentType.Raid:
+        return VideoCategory.FFXIVRaids;
+      case ContentType['Alliance Raid']:
+        return VideoCategory.FFXIVAllianceRaids;
+      case ContentType['Variant Dungeon']:
+        return VideoCategory.FFXIVVariantDungeons;
+      case ContentType['Criterion Dungeon']:
+        return VideoCategory.FFXIVCriterionDungeons;
+      case ContentType.Dungeon:
+        return VideoCategory.FFXIVDungeons;
+      case ContentType['Deep Dungeon']:
+        return VideoCategory.FFXIVDeepDungeons;
+      default:
+        return undefined;
+    }
+  }
+
+  /**
+   * Start recording a whole run (dungeons, deep dungeons).
+   */
+  private async startRun(territory: Zone, timestamp: Date) {
+    const category = FFXIVLogHandler.getCategory(territory);
+
+    if (!category) {
+      return;
+    }
+
+    const activity = new FFXIVDungeon(
+      timestamp,
+      territory.name,
+      territory.difficulty,
+      category,
     );
 
-    this.currentCombatants = partyMembers.map((member) => {
-      const combatant = new Combatant(member.id);
-      combatant.name = member.name;
-      const jobHex = member.job
-        .toString(16)
-        .toUpperCase()
-        .padStart(2, '0') as Job;
-      combatant.job = jobHex;
-      return combatant;
+    const segment = new DungeonTimelineSegment(
+      TimelineSegmentType.Trash,
+      timestamp,
+      0,
+    );
+
+    activity.addTimelineSegment(segment);
+    await this.startRecording(activity);
+  }
+
+  /**
+   * Start recording a boss pull (everything that isn't a whole run).
+   */
+  private async startPull(timestamp: Date) {
+    if (!this.currentZone) {
+      return;
+    }
+
+    if (FFXIVGenericLogHandler.activity) {
+      // Already recording this pull. Common, as the combat flag arrives from
+      // both the 260 line and Cactbot.
+      return;
+    }
+
+    const category = FFXIVLogHandler.getCategory(this.currentZone);
+
+    if (!category) {
+      return;
+    }
+
+    this.currentPull += 1;
+    this.bossKilledThisPull = false;
+
+    const bossName = this.primaryBoss
+      ? this.primaryBoss.name
+      : this.currentZone.name;
+
+    const activity = new FFXIVBossEncounter(
+      timestamp,
+      this.currentZone.name,
+      bossName,
+      this.currentZone.difficulty ?? Difficulty.Normal,
+      category,
+    );
+
+    activity.pull = this.currentPull;
+
+    // Cut back a few seconds into the buffer to catch the start of the pull.
+    await this.startRecording(activity, 3);
+  }
+
+  private async startRecording(activity: Activity, offset = 0) {
+    activity.playerGUID = this.playerGUID;
+
+    this.currentCombatants.forEach((combatant) => {
+      activity.addCombatant(combatant);
     });
 
-    // Update the current activity if one is in progress
-    if (FFXIVGenericLogHandler.activity) {
-      this.currentCombatants.forEach((combatant) => {
-        FFXIVGenericLogHandler.activity!.addCombatant(combatant);
-      });
+    // The party list from IINACT can be empty when solo, and the metadata
+    // needs the player to be a combatant, so always add ourselves.
+    if (this.playerGUID && !activity.getCombatant(this.playerGUID)) {
+      const self = new Combatant(this.playerGUID);
+      self.name = this.playerName;
+      activity.addCombatant(self);
+    }
+
+    await FFXIVGenericLogHandler.startActivity(activity, offset);
+  }
+
+  /**
+   * End the current activity, if any. Every FFXIV activity end goes through
+   * here so the pending end and timeline segment get tidied up.
+   */
+  private async endRecording(timestamp: Date, success: boolean) {
+    this.clearPendingEnd();
+    const activity = FFXIVGenericLogHandler.activity;
+
+    if (!activity) {
+      return;
+    }
+
+    if (activity.category === VideoCategory.Manual) {
+      // Manual recordings are started and stopped by the hotkey only; zone
+      // changes and duty events must not touch them.
+      console.info('[FFXIVLogHandler] Leaving manual recording running');
+      return;
+    }
+
+    if (activity instanceof FFXIVDungeon) {
+      activity.endCurrentTimelineSegment(timestamp);
+    }
+
+    console.info(
+      '[FFXIVLogHandler] Ending activity, success:',
+      success,
+      'category:',
+      activity.category,
+    );
+
+    activity.end(timestamp, success);
+    await FFXIVGenericLogHandler.endActivity();
+  }
+
+  /**
+   * End the current pull after the grace period, unless something more
+   * definitive ends it first. The end date is the time of the signal, not
+   * the end of the grace period.
+   */
+  private schedulePullEnd(timestamp: Date, success: boolean) {
+    if (!FFXIVGenericLogHandler.activity) {
+      return;
+    }
+
+    this.clearPendingEnd();
+
+    const timer = setTimeout(() => {
+      this.pendingEnd = undefined;
+
+      this.endRecording(timestamp, success).catch((error) =>
+        console.error('[FFXIVLogHandler] Failed to end pull', error),
+      );
+    }, COMBAT_END_GRACE_MS);
+
+    this.pendingEnd = { timer, timestamp };
+  }
+
+  private clearPendingEnd() {
+    if (this.pendingEnd) {
+      clearTimeout(this.pendingEnd.timer);
+      this.pendingEnd = undefined;
     }
   }
 
-  private async handlePlayer(line: FFXIVLogLine) {
-    const parsed = new ChangePrimaryPlayerLine(line);
-    this.playerGUID = parsed.playerId;
-    if (FFXIVGenericLogHandler.activity) {
-      const combatant = new Combatant(parsed.playerId);
-      combatant.name = parsed.playerName;
-      FFXIVGenericLogHandler.activity.playerGUID = parsed.playerId;
-      FFXIVGenericLogHandler.activity.addCombatant(combatant);
+  private async handleInCombat(line: FFXIVLogLine) {
+    const parsed = new InCombatLine(line);
+
+    // IINACT writes a 260 line whenever either ACT's or the game's idea of
+    // combat changes. Only the game's flag means anything here; acting on
+    // the ACT flips is what used to start pulls twice.
+    if (!parsed.isGameChanged) {
+      return;
     }
+
+    await this.handleCombatChange(parsed.inGameCombat, parsed.timestamp);
+  }
+
+  /**
+   * Cactbot mirrors the game's combat flag, so during normal play this just
+   * duplicates the 260 line harmlessly. It matters on connect, when Cactbot
+   * re-sends the current state and there is no 260 line to go on. It can
+   * arrive before the zone event, hence the flag.
+   */
+  private async handleCactbotCombatChange(inCombat: boolean) {
+    // Cactbot also fires this when ACT's own combat flag changes, so ignore
+    // repeats of the game flag or they would keep re-arming the pull end.
+    if (inCombat === this.cactbotInCombat) {
+      return;
+    }
+
+    this.cactbotInCombat = inCombat;
+    await this.handleCombatChange(inCombat, new Date());
+  }
+
+  private async handleCombatChange(inCombat: boolean, timestamp: Date) {
+    if (this.mode !== RecordMode.Combat) {
+      // Runs record throughout, sealed content keys off the arena seal.
+      return;
+    }
+
+    if (inCombat) {
+      // Either a new pull, or combat resuming after a brief drop, in which
+      // case the pending end is cancelled and the recording carries on.
+      this.clearPendingEnd();
+      await this.startPull(timestamp);
+      return;
+    }
+
+    // Combat dropped. If a director or chat line hasn't already ended the
+    // pull by the time the grace period is up, all we know is whether the
+    // boss died.
+    this.schedulePullEnd(timestamp, this.bossKilledThisPull);
   }
 
   private async handleChat(line: FFXIVLogLine) {
     const parsed = new LogLineLine(line);
 
-    if (!parsed.isDungeonChannel()) {
+    if (!parsed.isDutyChannel()) {
       return;
     }
-    // this won't work. When you leave a dungeon it says "has ended"
-    if (!parsed.isCompletionMessage()) {
-      return;
-    }
-    const activity = FFXIVGenericLogHandler.activity;
-    if (activity) {
-      if (this.currentZone?.type === ContentType.Dungeon) {
-        (
-          FFXIVGenericLogHandler.activity as FFXIVDungeon
-        ).endCurrentTimelineSegment(parsed.timestamp);
-      }
-      this.endRecording(line, true);
-    }
-  }
 
-  // I think in order to get trials/raids to work right, I need to look for the death of the boss
-  // that means I got a lot more boss ids to add lol
-  private async handleDeath(line: FFXIVLogLine) {
-    const activity = FFXIVGenericLogHandler.activity;
-    if (activity) {
-      const parsed = new DeathLine(line);
-      const deadPlayer = activity.getCombatant(parsed.targetId);
-      if (deadPlayer) {
-        // deaths seem to be recorded 3 seconds after the actual death
-        const deathDate = parsed.timestamp.getTime() / 1000 - OFFSET;
-        const activityStartDate = activity.startDate.getTime() / 1000;
-        const relativeTime = deathDate - activityStartDate;
-        const playerDeath: PlayerDeathType = {
-          name: deadPlayer.name ? deadPlayer.name : '',
-          timestamp: relativeTime,
-        };
-        activity.addDeath(playerDeath);
-        this.playerDeaths++;
-
-        console.debug(
-          `[FFXIVLogHandler] ${this.playerDeaths}/${this.currentCombatants.length} dead players`,
-        );
-
-        if (
-          (this.currentZone?.type === ContentType['Variant Dungeon'] ||
-           this.currentZone?.type === ContentType['Criterion Dungeon'] ||
-           this.currentZone?.type === ContentType['Alliance Raid']) &&
-          this.playerDeaths >= this.currentCombatants.length
-        ) {
-          console.debug(
-            '[FFXIVLogHandler] handleDeath: all players dead in variant dungeon',
-          );
-          this.endRecording(line, false);
-          this.playerDeaths = 0;
-        }
-      } else if (
-        this.currentBossId &&
-        parsed.targetName === BNpcNameIdToNameMap.get(this.currentBossId[0]) &&
-        (this.currentZone?.type === ContentType['Variant Dungeon'] ||
-         this.currentZone?.type === ContentType['Criterion Dungeon'] ||
-         this.currentZone?.type === ContentType['Alliance Raid'])
-      ) {
-        console.debug(
-          '[FFXIVLogHandler] handleDeath: boss defeated',
-        );
-        this.endRecording(line, true);
-        this.currentPull = 0;
-        this.playerDeaths = 0;
-      } else if (
-        this.currentBossId &&
-        parsed.targetName === BNpcNameIdToNameMap.get(this.currentBossId[0]) &&
-        this.currentZone?.type === ContentType.Dungeon
-      ) {
-        // end dungeon boss segment
-        console.debug('[FFXIVLogHandler] handleDeath: ending boss segment');
-        const dungeonActivity = FFXIVGenericLogHandler.activity as FFXIVDungeon;
-        const segment = new DungeonTimelineSegment(
-          TimelineSegmentType.Trash,
-          parsed.timestamp,
-          this.getRelativeTimestampForTimelineSegment(parsed.timestamp, OFFSET),
-        );
-        dungeonActivity.addTimelineSegment(segment, parsed.timestamp);
-      }
-    }
-  }
-
-  private handleBuff(line: FFXIVLogLine) {
-    if (this.playerDeaths === 0) return;
-
-    const parsed = new BuffLine(line);
-    if (!parsed.isTranscendent()) return;
-
-    const activity = FFXIVGenericLogHandler.activity;
-    if (!activity) return;
-
-    const combatant = activity.getCombatant(parsed.targetId);
-    if (combatant) {
-      console.debug(
-        `[FFXIVLogHandler] handleBuff: player ${parsed.targetName} revived (Transcendent)`,
-      );
-      this.playerDeaths--;
-      console.debug(
-        `[FFXIVLogHandler] ${this.playerDeaths}/${this.currentCombatants.length} dead players`,
-      );
-    }
-  }
-
-  private async handleInCombat(line: FFXIVLogLine) {
-    if (this.shouldRecordOnCombat && this.currentZone) {
-      const parsed = new InCombatLine(line);
-
-      if (!parsed.inGameCombat) {
-        if (this.currentZone.type !== ContentType['Variant Dungeon'] &&
-            this.currentZone.type !== ContentType['Criterion Dungeon'] &&
-            this.currentZone.type !== ContentType['Alliance Raid']) {
-          this.endRecording(line, false);
-        }
-      } else if (this.currentZone.type === ContentType.Trial) {
-        this.currentPull += 1;
-        const bossName = this.currentBossId
-          ? BNpcNameIdToNameMap.get(this.currentBossId[0]) || this.currentZone.name
-          : this.currentZone.name;
-        const activity = new FFXIVBossEncounter(
-          parsed.timestamp,
-          this.currentZone.name,
-          bossName,
-          this.currentZone.difficulty,
-          VideoCategory.FFXIVTrials,
-        );
-        activity.playerGUID = this.playerGUID;
-        activity.pull = this.currentPull;
-        this.startRecording(activity, 3);
-      } else if (this.currentZone.type === ContentType.Raid) {
-        this.currentPull += 1;
-        const bossName = this.currentBossId
-          ? BNpcNameIdToNameMap.get(this.currentBossId[0]) || this.currentZone.name
-          : this.currentZone.name;
-        const activity = new FFXIVBossEncounter(
-          parsed.timestamp,
-          this.currentZone.name,
-          bossName,
-          this.currentZone.difficulty,
-          VideoCategory.FFXIVRaids,
-        );
-        activity.playerGUID = this.playerGUID;
-        activity.pull = this.currentPull;
-        this.startRecording(activity, 3);
-      } else if (this.currentZone.difficulty === Difficulty.Chaotic) {
-        this.currentPull += 1;
-        const bossName = this.currentBossId
-          ? BNpcNameIdToNameMap.get(this.currentBossId[0]) || this.currentZone.name
-          : this.currentZone.name;
-        const activity = new FFXIVBossEncounter(
-          parsed.timestamp,
-          this.currentZone.name,
-          bossName,
-          this.currentZone.difficulty,
-          VideoCategory.FFXIVAllianceRaids,
-        );
-        activity.playerGUID = this.playerGUID;
-        activity.pull = this.currentPull;
-        this.startRecording(activity, 3);
-      } else if (
-        this.currentZone.type === ContentType['Criterion Dungeon'] &&
-        this.currentBossId
-      ) {
-        this.currentPull += 1;
-        const bossName =
-          BNpcNameIdToNameMap.get(this.currentBossId[0]) || 'Unknown Boss';
-        const activity = new FFXIVBossEncounter(
-          parsed.timestamp,
-          this.currentZone.name,
-          bossName,
-          this.currentZone.difficulty,
-          VideoCategory.FFXIVCriterionDungeons,
-        );
-        activity.playerGUID = this.playerGUID;
-        activity.pull = this.currentPull;
-        this.playerDeaths = 0;
-        this.startRecording(activity, 3);
-      } else if (
-        this.currentZone.type === ContentType['Alliance Raid'] &&
-        this.currentBossId
-      ) {
-        this.currentPull += 1;
-        const bossName =
-          BNpcNameIdToNameMap.get(this.currentBossId[0]) || 'Unknown Boss';
-        const activity = new FFXIVBossEncounter(
-          parsed.timestamp,
-          this.currentZone.name,
-          bossName,
-          this.currentZone.difficulty,
-          VideoCategory.FFXIVAllianceRaids,
-        );
-        activity.playerGUID = this.playerGUID;
-        activity.pull = this.currentPull;
-        this.playerDeaths = 0;
-        this.startRecording(activity, 3);
-      } else if (
-        this.currentZone.type === ContentType['Variant Dungeon'] &&
-        this.currentBossId
-      ) {
-        this.currentPull += 1;
-        // Look up the boss name from the map using npcNameId
-        const bossName =
-          BNpcNameIdToNameMap.get(this.currentBossId[0]) || 'Unknown Boss';
-        const activity = new FFXIVBossEncounter(
-          parsed.timestamp,
-          this.currentZone.name,
-          bossName,
-          Difficulty.Normal,
-          VideoCategory.FFXIVVariantDungeons,
-        );
-        activity.playerGUID = this.playerGUID;
-        activity.pull = this.currentPull;
-        this.playerDeaths = 0;
-        this.startRecording(activity, 3);
-      }
-    }
-  }
-
-
-  private async startRecording(activity: Activity, offset: number = 0) {
-    this.currentCombatants.forEach((combatant) => {
-      activity.addCombatant(combatant);
-    });
-    await FFXIVGenericLogHandler.startActivity(activity, offset);
-  }
-
-  private async endRecording(line: FFXIVLogLine, success: boolean) {
-    if (FFXIVGenericLogHandler.activity) {
-      FFXIVGenericLogHandler.activity.end(line.date(), success);
-      await FFXIVGenericLogHandler.endActivity();
+    if (parsed.isCompletionMessage()) {
+      await this.handleDutyComplete(parsed.timestamp);
+    } else if (parsed.isArenaSealed()) {
+      await this.handleArenaSealed(parsed.timestamp);
+    } else if (parsed.isArenaUnsealed()) {
+      await this.handleArenaUnsealed(parsed.timestamp);
     }
   }
 
   /**
-   * Recover game state from existing log files on startup/hot reload.
-   * This allows the app to resume recording if it restarts mid-encounter.
+   * Duty director lines. See DirectorLine for what the commands mean.
    */
-  private async recoverState(): Promise<void> {
-    if (this.isRecoveringState) {
-      console.debug('[FFXIVLogHandler] Already recovering state, skipping');
+  private async handleDirector(line: FFXIVLogLine) {
+    const parsed = new DirectorLine(line);
+
+    if (parsed.isDutyComplete()) {
+      await this.handleDutyComplete(parsed.timestamp);
+    }
+  }
+
+  /**
+   * The duty is complete. This arrives as both a director line and a chat
+   * line; whichever gets here first ends the activity, the other is a no-op.
+   */
+  private async handleDutyComplete(timestamp: Date) {
+    if (!FFXIVGenericLogHandler.activity) {
       return;
     }
 
-    this.isRecoveringState = true;
+    console.info('[FFXIVLogHandler] Duty complete');
+    await this.endRecording(timestamp, true);
+  }
 
-    try {
-      const state = await this.combatLogWatcher.getCurrentGameState();
+  /**
+   * A boss arena was sealed off, so a boss fight is starting. For sealed
+   * content that's the start of a pull, for a run it's a boss segment.
+   */
+  private async handleArenaSealed(timestamp: Date) {
+    if (this.mode === RecordMode.Sealed) {
+      await this.startPull(timestamp);
+      return;
+    }
 
-      if (state.playerId) {
-        console.debug('[FFXIVLogHandler] Setting playerGUID');
-        this.playerGUID = state.playerId;
-      } else {
-        console.debug('[FFXIVLogHandler] Not setting playerGUID');
-      }
+    const activity = FFXIVGenericLogHandler.activity;
 
-      let territory: Zone | undefined;
+    if (this.mode === RecordMode.Run && activity instanceof FFXIVDungeon) {
+      const segment = new DungeonTimelineSegment(
+        TimelineSegmentType.BossEncounter,
+        timestamp,
+        this.getRelativeTimestamp(timestamp),
+        undefined,
+        this.primaryBoss?.name,
+      );
 
-      // Try to find zone by ID first (most precise)
-      if (state.zoneId) {
-        territory = zones.find((z) => z.id === state.zoneId);
-      }
+      activity.addTimelineSegment(segment, timestamp);
+    }
+  }
 
-      // Fall back to zone name if no ID match
-      if (!territory && state.zoneName) {
-        const normalizedName = state.zoneName.toLowerCase();
-        territory = zones.find(
-          (z) =>
-            z.rawName.toLowerCase() === normalizedName ||
-            z.name.toLowerCase() === normalizedName,
-        );
-        if (territory) {
-          console.debug(
-            '[FFXIVLogHandler] Matched zone by name:',
-            state.zoneName,
-            '->',
-            territory.name,
-          );
-        }
-      }
+  /**
+   * A boss arena was unsealed, so the fight is over one way or the other.
+   * The arena unseals both when the boss dies and when the party is
+   * defeated; the boss death line is what tells them apart.
+   */
+  private async handleArenaUnsealed(timestamp: Date) {
+    if (this.mode === RecordMode.Sealed) {
+      // Don't decide the result yet: the boss death line can trail the
+      // unseal by a couple of seconds (the unseal itself trails a party
+      // wipe), so wait out the grace period and let a boss death upgrade it
+      // to a kill. Prefer the boss death time if we already have it.
+      const endDate = this.pendingEnd?.timestamp ?? timestamp;
+      this.schedulePullEnd(endDate, this.bossKilledThisPull);
+      return;
+    }
 
-      if (!territory) {
-        console.debug(
-          '[FFXIVLogHandler] No matching territory for zone:',
-          state.zoneId || state.zoneName,
-        );
+    const activity = FFXIVGenericLogHandler.activity;
+
+    if (this.mode === RecordMode.Run && activity instanceof FFXIVDungeon) {
+      const segment = new DungeonTimelineSegment(
+        TimelineSegmentType.Trash,
+        timestamp,
+        this.getRelativeTimestamp(timestamp),
+      );
+
+      activity.addTimelineSegment(segment, timestamp);
+    }
+  }
+
+  private async handleAddCombatant(line: FFXIVLogLine) {
+    if (!this.currentZone || this.mode === RecordMode.None) {
+      return;
+    }
+
+    const parsed = new AddCombatantLine(line);
+
+    if (parsed.isPlayer()) {
+      if (this.currentCombatants.has(parsed.actorId)) {
         return;
       }
 
-      console.info(
-        '[FFXIVLogHandler] Recovering state for zone:',
-        territory.name,
-        'type:',
-        ContentType[territory.type],
-        'inCombat:',
-        state.inCombat,
-      );
+      const combatant = new Combatant(parsed.actorId);
+      combatant.name = parsed.name;
+      combatant.job = parsed.job;
+      this.currentCombatants.set(parsed.actorId, combatant);
 
-      this.currentZone = territory;
-
-      // Content types that record entire run - start immediately
-      const recordEntireRun = [
-        ContentType.Dungeon,
-        ContentType['Deep Dungeon'],
-      ];
-
-      // Content types that record boss pulls only
-      const recordOnCombat = [
-        ContentType.Trial,
-        ContentType.Raid,
-        ContentType['Criterion Dungeon'],
-        ContentType['Variant Dungeon'],
-        ContentType['Alliance Raid'],
-      ];
-
-      if (recordEntireRun.includes(territory.type)) {
-        // Start recording immediately for content that records entire run
-        await this.startRecordingForRecoveredState(territory, state);
-      } else if (
-        recordOnCombat.includes(territory.type) ||
-        territory.difficulty === Difficulty.Ultimate ||
-        territory.difficulty === Difficulty.Chaotic
-      ) {
-        // For boss-pull content, set shouldRecordOnCombat
-        this.shouldRecordOnCombat = true;
-
-        if (state.inCombat) {
-          // Mid-pull, start recording now
-          await this.startRecordingForRecoveredState(territory, state);
-        } else {
-          console.info(
-            '[FFXIVLogHandler] Not in combat, waiting for next pull',
-          );
-        }
-        // If not in combat, we just wait for the next InCombat event
+      if (FFXIVGenericLogHandler.activity) {
+        FFXIVGenericLogHandler.activity.addCombatant(combatant);
       }
-    } catch (error) {
-      console.error('[FFXIVLogHandler] Error recovering state:', error);
-    } finally {
-      this.isRecoveringState = false;
+
+      return;
+    }
+
+    const bossName = BNpcNameIdToNameMap.get(parsed.npcNameId);
+
+    if (bossName === undefined) {
+      return;
+    }
+
+    this.bossActors.set(parsed.actorId, {
+      id: parsed.actorId,
+      nameId: parsed.npcNameId,
+      name: bossName,
+      maxHp: parsed.maxHp,
+      dead: false,
+    });
+
+    this.refreshPrimaryBoss();
+  }
+
+  private handleRemoveCombatant(line: FFXIVLogLine) {
+    const parsed = new RemoveCombatantLine(line);
+
+    if (this.bossActors.delete(parsed.actorId)) {
+      this.refreshPrimaryBoss();
     }
   }
 
   /**
-   * Start recording for a recovered state. Creates the appropriate activity
-   * based on the content type.
+   * Pick the real boss out of the boss actors: the living one with the most
+   * HP, preferring the most recently spawned on a tie, as bosses respawn
+   * with a new actor ID after a wipe.
    */
-  private async startRecordingForRecoveredState(
-    territory: Zone,
-    state: FFXIVGameState,
-  ): Promise<void> {
-    const timestamp = state.timestamp || new Date();
+  private refreshPrimaryBoss() {
+    let primary: BossActor | undefined;
 
-    console.info(
-      '[FFXIVLogHandler] Starting recording for recovered state:',
-      territory.name,
-    );
-
-    let activity: Activity | undefined;
-
-    if (territory.difficulty === Difficulty.Ultimate) {
-      this.shouldRecordOnCombat = true;
-      this.currentPull += 1;
-      activity = new FFXIVBossEncounter(
-        timestamp,
-        territory.name,
-        'unknown',
-        territory.difficulty,
-        VideoCategory.FFXIVRaids,
-      );
-      (activity as FFXIVBossEncounter).pull = this.currentPull;
-    } else if (territory.difficulty === Difficulty.Chaotic) {
-      this.currentPull += 1;
-      activity = new FFXIVBossEncounter(
-        timestamp,
-        territory.name,
-        'unknown',
-        territory.difficulty,
-        VideoCategory.FFXIVAllianceRaids,
-      );
-      (activity as FFXIVBossEncounter).pull = this.currentPull;
-    } else if (territory.type === ContentType.Trial) {
-      this.shouldRecordOnCombat = true;
-      this.currentPull += 1;
-      activity = new FFXIVBossEncounter(
-        timestamp,
-        territory.name,
-        'unknown',
-        territory.difficulty,
-        VideoCategory.FFXIVTrials,
-      );
-      (activity as FFXIVBossEncounter).pull = this.currentPull;
-    } else if (territory.type === ContentType.Raid) {
-      this.shouldRecordOnCombat = true;
-      this.currentPull += 1;
-      activity = new FFXIVBossEncounter(
-        timestamp,
-        territory.name,
-        'unknown',
-        territory.difficulty,
-        VideoCategory.FFXIVRaids,
-      );
-      (activity as FFXIVBossEncounter).pull = this.currentPull;
-    } else if (territory.type === ContentType['Deep Dungeon']) {
-      activity = new FFXIVDungeon(
-        timestamp,
-        territory.name,
-        territory.difficulty,
-        VideoCategory.FFXIVDeepDungeons,
-      );
-      const segment = new DungeonTimelineSegment(
-        TimelineSegmentType.Trash,
-        timestamp,
-        0,
-      );
-      (activity as FFXIVDungeon).addTimelineSegment(segment);
-    } else if (territory.type === ContentType.Dungeon) {
-      activity = new FFXIVDungeon(
-        timestamp,
-        territory.name,
-        territory.difficulty,
-        VideoCategory.FFXIVDungeons,
-      );
-      const segment = new DungeonTimelineSegment(
-        TimelineSegmentType.Trash,
-        timestamp,
-        0,
-      );
-      (activity as FFXIVDungeon).addTimelineSegment(segment);
-    } else if (territory.type === ContentType['Alliance Raid']) {
-      this.shouldRecordOnCombat = true;
-      this.currentPull += 1;
-      activity = new FFXIVBossEncounter(
-        timestamp,
-        territory.name,
-        'unknown',
-        territory.difficulty,
-        VideoCategory.FFXIVAllianceRaids,
-      );
-    } else if (territory.type === ContentType['Criterion Dungeon']) {
-      this.shouldRecordOnCombat = true;
-      this.currentPull += 1;
-      activity = new FFXIVBossEncounter(
-        timestamp,
-        territory.name,
-        'unknown',
-        territory.difficulty,
-        VideoCategory.FFXIVCriterionDungeons,
-      );
-    } else if (territory.type === ContentType['Variant Dungeon']) {
-      this.shouldRecordOnCombat = true;
-      this.currentPull += 1;
-      // For variant dungeons, we might not have the boss ID on recovery
-      // so we create a generic boss encounter activity
-      activity = new FFXIVBossEncounter(
-        timestamp,
-        territory.name,
-        'unknown', // We don't have the boss ID on recovery
-        Difficulty.Normal,
-        VideoCategory.FFXIVVariantDungeons,
-      );
+    for (const actor of Array.from(this.bossActors.values())) {
+      if (!actor.dead && (!primary || actor.maxHp >= primary.maxHp)) {
+        primary = actor;
+      }
     }
 
-    if (activity) {
-      activity.playerGUID = this.playerGUID;
-      await this.startRecording(activity, 3);
+    if (primary?.id !== this.primaryBoss?.id) {
+      this.primaryBoss = primary;
+
+      if (primary) {
+        console.info(
+          '[FFXIVLogHandler] Boss:',
+          primary.name,
+          primary.id,
+          'max HP:',
+          primary.maxHp,
+        );
+      }
+    }
+
+    // If the pull started before the boss spawned, fix up the name.
+    const activity = FFXIVGenericLogHandler.activity;
+
+    if (
+      primary &&
+      this.currentZone &&
+      activity instanceof FFXIVBossEncounter &&
+      activity.bossName === this.currentZone.name
+    ) {
+      activity.bossName = primary.name;
     }
   }
 
-  private getRelativeTimestampForTimelineSegment(
-    eventDate: Date,
-    offset: number = 0,
-  ) {
-    if (!FFXIVGenericLogHandler.activity) {
-      console.error(
-        '[FFXIVLogHandler] getRelativeTimestampForTimelineSegment called but no active activity',
-      );
+  private async handlePlayer(line: FFXIVLogLine) {
+    const parsed = new ChangePrimaryPlayerLine(line);
+    this.setPlayer(parsed.playerId, parsed.playerName);
+  }
 
+  private setPlayer(playerId: string, playerName?: string) {
+    if (this.playerGUID !== playerId) {
+      console.info('[FFXIVLogHandler] Player is', playerId, playerName ?? '');
+    }
+
+    this.playerGUID = playerId;
+
+    if (playerName) {
+      this.playerName = playerName;
+    }
+
+    const activity = FFXIVGenericLogHandler.activity;
+
+    // If we learn who we are mid-activity (e.g. we connected mid-pull), the
+    // activity needs to know too or its metadata can't be built.
+    if (activity && !activity.playerGUID) {
+      activity.playerGUID = playerId;
+
+      if (!activity.getCombatant(playerId)) {
+        const self = new Combatant(playerId);
+        self.name = playerName;
+        activity.addCombatant(self);
+      }
+    }
+  }
+
+  private handlePartyChanged(party: PartyMember[]) {
+    const members = party.filter((member) => member.inParty);
+    const combatants = new Map<string, Combatant>();
+
+    members.forEach((member) => {
+      const combatant = new Combatant(member.id);
+      combatant.name = member.name;
+      combatant.job = member.job
+        .toString(16)
+        .toUpperCase()
+        .padStart(2, '0') as Job;
+      combatants.set(member.id, combatant);
+    });
+
+    if (this.playerGUID) {
+      const self = combatants.get(this.playerGUID);
+
+      if (self?.name) {
+        this.playerName = self.name;
+      }
+    }
+
+    this.currentCombatants = combatants;
+
+    const activity = FFXIVGenericLogHandler.activity;
+
+    if (activity) {
+      combatants.forEach((combatant) => activity.addCombatant(combatant));
+    }
+  }
+
+  private async handleDeath(line: FFXIVLogLine) {
+    const parsed = new DeathLine(line);
+    const activity = FFXIVGenericLogHandler.activity;
+    const boss = this.bossActors.get(parsed.targetId);
+
+    if (boss) {
+      const wasPrimary = this.primaryBoss?.id === boss.id;
+      boss.dead = true;
+      this.refreshPrimaryBoss();
+
+      if (wasPrimary && activity instanceof FFXIVBossEncounter) {
+        this.handleBossKilled(boss.name, parsed.timestamp);
+      }
+
+      return;
+    }
+
+    if (!activity) {
+      return;
+    }
+
+    const player = activity.getCombatant(parsed.targetId);
+
+    if (player) {
+      const relativeTime =
+        (parsed.timestamp.getTime() - activity.startDate.getTime()) / 1000;
+
+      const death: PlayerDeathType = {
+        name: player.name ? player.name : '',
+        timestamp: relativeTime,
+      };
+
+      activity.addDeath(death);
+      return;
+    }
+
+    // An actor we never saw spawn, e.g. we connected after the boss did.
+    // Fall back to matching the name, which is how bosses used to be found.
+    if (
+      activity instanceof FFXIVBossEncounter &&
+      FFXIVLogHandler.bossNames.has(parsed.targetName)
+    ) {
+      this.handleBossKilled(parsed.targetName, parsed.timestamp);
+    }
+  }
+
+  /**
+   * The boss died. In sealed content the unseal ends the pull, but the
+   * death line can arrive after it, and in any mode it can trail the combat
+   * drop by a couple of seconds, so a pull that's already winding down
+   * becomes a kill. Otherwise this is just remembered for when it does end.
+   */
+  private handleBossKilled(name: string, timestamp: Date) {
+    console.info('[FFXIVLogHandler] Boss killed:', name);
+    this.bossKilledThisPull = true;
+
+    if (this.mode === RecordMode.Sealed || this.pendingEnd) {
+      const endDate = this.pendingEnd?.timestamp ?? timestamp;
+      this.schedulePullEnd(endDate, true);
+    }
+  }
+
+  /**
+   * HP updates for the boss feed the boss percentage on wipes. These are
+   * frequent for every actor, so check the actor ID before parsing.
+   */
+  private handleUpdateHp(line: FFXIVLogLine) {
+    const activity = FFXIVGenericLogHandler.activity;
+
+    if (!this.primaryBoss || !(activity instanceof FFXIVBossEncounter)) {
+      return;
+    }
+
+    if (line.arg(2) !== this.primaryBoss.id) {
+      return;
+    }
+
+    const parsed = new UpdateHpLine(line);
+
+    if (Number.isNaN(parsed.currentHp) || Number.isNaN(parsed.maxHp)) {
+      return;
+    }
+
+    activity.updateHp(parsed.currentHp, parsed.maxHp);
+  }
+
+  private getRelativeTimestamp(eventDate: Date) {
+    const activity = FFXIVGenericLogHandler.activity;
+
+    if (!activity) {
       return 0;
     }
 
-    const activityStartDate = FFXIVGenericLogHandler.activity.startDate;
-    const relativeTime =
-      (eventDate.getTime() - activityStartDate.getTime()) / 1000 - offset;
-    return relativeTime;
+    return (eventDate.getTime() - activity.startDate.getTime()) / 1000;
   }
 }

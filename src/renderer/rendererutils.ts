@@ -257,9 +257,9 @@ const getEncounterMarkers = (video: RendererVideo) => {
       (segmentEnd.getTime() - segmentStart.getTime()) / 1000,
     );
 
-    let markerText = '';
+    let markerText = segment.name ?? '';
 
-    if (segment.encounterId !== undefined) {
+    if (!markerText && segment.encounterId !== undefined) {
       markerText = dungeonEncounters[segment.encounterId];
     }
 
@@ -279,8 +279,12 @@ const getWoWClassColor = (unitClass: WoWCharacterClassType) => {
   return WoWClassColor[unitClass];
 };
 
-const getFFXIVJobColor = (job: Job) => {
-  switch (job) {
+const getFFXIVJobColor = (job: string) => {
+  // Video metadata stores the job abbreviation (the enum key, e.g. 'SGE'),
+  // so resolve that to the enum value before matching.
+  const resolved = Job[job as keyof typeof Job] ?? job;
+
+  switch (resolved) {
     case Job.ACN:
     case Job.ARC:
     case Job.BLM:
@@ -315,6 +319,8 @@ const getFFXIVJobColor = (job: Job) => {
     case Job.PLD:
     case Job.WAR:
       return '#4555bb';
+    default:
+      return '#ffffff';
   }
 };
 

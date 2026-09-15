@@ -21,18 +21,37 @@ const ipc = window.electron.ipcRenderer;
 const FFXIVSettings = (props: IProps) => {
   const { recorderStatus, appState } = props;
   const [config, setConfig] = useSettings();
-  const initialRender = React.useRef(true);
+  const initialBaseRender = React.useRef(true);
+  const initialCategoryRender = React.useRef(true);
 
+  // These change what the main process connects to, so they need a base
+  // reconfigure, which stops and restarts the recorder.
   React.useEffect(() => {
     // Don't fire on the initial render.
-    if (initialRender.current) {
-      initialRender.current = false;
+    if (initialBaseRender.current) {
+      initialBaseRender.current = false;
       return;
     }
 
     setConfigValues({
       recordFFXIV: config.recordFFXIV,
       FFXIVWebSocketURL: config.FFXIVWebSocketURL,
+    });
+
+    ipc.reconfigureBase();
+  }, [config.recordFFXIV, config.FFXIVWebSocketURL]);
+
+  // The category switches are read live when an activity starts, so they
+  // only need saving. Reconfiguring for these used to stop the recorder on
+  // every toggle.
+  React.useEffect(() => {
+    // Don't fire on the initial render.
+    if (initialCategoryRender.current) {
+      initialCategoryRender.current = false;
+      return;
+    }
+
+    setConfigValues({
       FFXIVRecordDungeons: config.FFXIVRecordDungeons,
       FFXIVRecordTrials: config.FFXIVRecordTrials,
       FFXIVRecordRaids: config.FFXIVRecordRaids,
@@ -41,11 +60,7 @@ const FFXIVSettings = (props: IProps) => {
       FFXIVRecordVariantDungeons: config.FFXIVRecordVariantDungeons,
       FFXIVRecordCriterionDungeons: config.FFXIVRecordCriterionDungeons,
     });
-
-    ipc.reconfigureBase();
   }, [
-    config.recordFFXIV,
-    config.FFXIVWebSocketURL,
     config.FFXIVRecordDungeons,
     config.FFXIVRecordTrials,
     config.FFXIVRecordRaids,

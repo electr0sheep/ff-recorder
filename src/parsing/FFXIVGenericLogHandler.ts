@@ -47,6 +47,19 @@ export default abstract class FFXIVGenericLogHandler {
 
   private static minBossHp = 100 * 10 ** 6;
 
+  /**
+   * Categories that are recorded per boss pull. Pulls shorter than the
+   * minimum encounter duration setting are discarded, same as WoW raids.
+   */
+  private static pullCategories = [
+    VideoCategory.Raids,
+    VideoCategory.FFXIVTrials,
+    VideoCategory.FFXIVRaids,
+    VideoCategory.FFXIVAllianceRaids,
+    VideoCategory.FFXIVVariantDungeons,
+    VideoCategory.FFXIVCriterionDungeons,
+  ];
+
   public combatLogWatcher: FFXIVCombatLogWatcher;
 
   protected player: Combatant | undefined;
@@ -95,6 +108,15 @@ export default abstract class FFXIVGenericLogHandler {
 
   protected static async startActivity(activity: Activity, offset: number = 0) {
     const { category } = activity;
+
+    if (FFXIVGenericLogHandler.activity) {
+      console.warn(
+        '[FFXIVGenericLogHandler] Activity already in progress, not starting',
+        category,
+      );
+      return;
+    }
+
     const allowed = allowRecordCategory(ConfigService.getInstance(), category);
 
     if (!allowed) {
@@ -214,7 +236,11 @@ export default abstract class FFXIVGenericLogHandler {
       const { duration } = metadata;
       const suffix = lastActivity.getFileName();
 
-      if (lastActivity.category === VideoCategory.Raids) {
+      const isPull = FFXIVGenericLogHandler.pullCategories.includes(
+        lastActivity.category,
+      );
+
+      if (isPull) {
         const minDuration = ConfigService.getInstance().get<number>(
           'minEncounterDuration',
         );
@@ -222,7 +248,8 @@ export default abstract class FFXIVGenericLogHandler {
 
         if (notLongEnough) {
           console.info(
-            '[FFXIVGenericLogHandler] Discarding raid encounter, too short',
+            '[FFXIVGenericLogHandler] Discarding encounter, too short:',
+            duration,
           );
           return;
         }

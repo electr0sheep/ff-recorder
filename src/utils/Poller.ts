@@ -78,7 +78,12 @@ export default class Poller extends EventEmitter {
    */
   public stop() {
     console.info('[Poller] Stop process poller');
+
+    // Reset both flags so that a restart re-emits the STARTED events for
+    // whatever is running. The Manager relies on that after a reconfigure
+    // to re-attach the capture source and restart the buffer.
     this.wowRunning = false;
+    this.ffxivRunning = false;
 
     if (this.child) {
       this.child.kill();

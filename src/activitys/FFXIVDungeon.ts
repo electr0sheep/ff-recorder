@@ -99,11 +99,7 @@ export default class FFXIVDungeon extends Activity {
   }
 
   getFileName(): string {
-    let fileName = `${this.encounterName} [${this.difficulty}] (${this.resultInfo})`;
-
-    if (this.encounterName !== 'Unknown Dungeon') {
-      fileName = `${this.encounterName}, ${fileName}`;
-    }
+    let fileName = `${this.encounterName} (${Difficulty[this.difficulty]}) (${this.resultInfo})`;
 
     try {
       if (this.player.name !== undefined) {

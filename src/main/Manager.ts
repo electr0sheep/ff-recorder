@@ -153,10 +153,14 @@ export default class Manager {
   public async reconfigureBase() {
     console.info('[Manager] Reconfiguring base');
 
-    // The recording must be stopped to do this.
-    await this.recorder.forceStop();
+    // Flag this first so process start events arriving while we're stopped
+    // don't restart the buffer underneath the reconfigure. The poller is
+    // restarted on success, which re-emits those events.
     this.reconfiguring = true;
     this.refreshStatus();
+
+    // The recording must be stopped to do this.
+    await this.recorder.forceStop();
     let success = false;
 
     try {
@@ -321,6 +325,14 @@ export default class Manager {
    */
   private async onWowStarted() {
     console.info('[Manager] Detected WoW is running');
+
+    if (this.reconfiguring) {
+      // The poller is restarted when the reconfigure completes, which will
+      // re-emit this event once the recorder is ready for it.
+      console.info('[Manager] Ignoring WoW start during reconfigure');
+      return;
+    }
+
     this.recorder.attachCaptureSource();
 
     const audioConfig = getObsAudioConfig(this.cfg);
@@ -376,22 +388,41 @@ export default class Manager {
    */
   private async onFFXIVStarted() {
     console.info('[Manager] Detected FFXIV started');
+
+    if (this.reconfiguring) {
+      // The poller is restarted when the reconfigure completes, which will
+      // re-emit this event once the recorder is ready for it.
+      console.info('[Manager] Ignoring FFXIV start during reconfigure');
+      return;
+    }
+
+    if (this.poller.isWowRunning()) {
+      // WoW owns the capture source and the buffer is already running.
+      if (this.FFXIVLogHandler) {
+        this.FFXIVLogHandler.enableReconnect();
+      }
+
+      return;
+    }
+
+    this.recorder.attachCaptureSource();
+
+    const audioConfig = getObsAudioConfig(this.cfg);
+    this.recorder.configureAudioSources(audioConfig);
+
+    // Queue the buffer start before connecting to IINACT. If a duty is
+    // already in progress the log handler starts a recording as soon as it
+    // connects, and that has to queue behind the buffer start.
+    const bufferStart = this.recorder.startBuffer();
+
     if (this.FFXIVLogHandler) {
       this.FFXIVLogHandler.enableReconnect();
     }
 
-    // Only start buffer/capture if WoW isn't already running
-    if (!this.poller.isWowRunning()) {
-      this.recorder.attachCaptureSource();
-
-      const audioConfig = getObsAudioConfig(this.cfg);
-      this.recorder.configureAudioSources(audioConfig);
-
-      try {
-        await this.recorder.startBuffer();
-      } catch (error) {
-        console.error('[Manager] OBS failed to start buffer for FFXIV', error);
-      }
+    try {
+      await bufferStart;
+    } catch (error) {
+      console.error('[Manager] OBS failed to start buffer for FFXIV', error);
     }
   }
 
@@ -475,11 +506,9 @@ export default class Manager {
     }
 
     if (config.recordFFXIV) {
+      // Not connected yet. The poller is restarted after this and re-emits
+      // the FFXIV started event, which connects once the buffer is queued.
       this.FFXIVLogHandler = new FFXIVLogHandler(config.FFXIVWebSocketURL);
-      // Enable reconnect if FFXIV is already running
-      if (this.poller.isFFXIVRunning()) {
-        this.FFXIVLogHandler.enableReconnect();
-      }
     }
   }
 
@@ -571,10 +600,10 @@ export default class Manager {
         return;
       }
 
-      const isWowRunning = this.poller.isWowRunning();
-
-      if (isWowRunning) {
+      if (this.poller.isWowRunning()) {
         this.onWowStarted();
+      } else if (this.poller.isFFXIVRunning()) {
+        this.onFFXIVStarted();
       }
     });
 
@@ -618,8 +647,11 @@ export default class Manager {
         return;
       }
 
-      if (!this.poller.isWowRunning()) {
-        console.warn('[Manager] WoW not running when manual hotkey pressed');
+      const wowRunning = this.poller.isWowRunning();
+      const ffxivRunning = this.poller.isFFXIVRunning();
+
+      if (!wowRunning && !ffxivRunning) {
+        console.warn('[Manager] No game running when manual hotkey pressed');
         return;
       }
 
@@ -628,8 +660,18 @@ export default class Manager {
         return;
       }
 
-      LogHandler.handleManualRecordingHotKey();
-      FFXIVGenericLogHandler.handleManualRecordingHotKey();
+      // Exactly one handler must own the manual recording. Prefer whichever
+      // already has an activity so a stop goes to the right place, then
+      // fall back to whichever game is running.
+      const useWow =
+        Boolean(LogHandler.activity) ||
+        (!FFXIVGenericLogHandler.activity && wowRunning);
+
+      if (useWow) {
+        LogHandler.handleManualRecordingHotKey();
+      } else {
+        FFXIVGenericLogHandler.handleManualRecordingHotKey();
+      }
     });
 
     // If Windows is going to sleep, we don't want to confuse OBS. It would be

@@ -4,7 +4,7 @@
     ".prettierrc": "jsonc",
     ".eslintignore": "ignore"
   },
-  
+
   "eslint.validate": [
     "javascript",
     "javascriptreact",
@@ -27,5 +27,14 @@
     "test/**/__snapshots__": true,
     "package-lock.json": true,
     "*.{css,sass,scss}.d.ts": true
-  }
+  },
+  "cSpell.words": [
+    "Dawntrail",
+    "Endwalker",
+    "FFXIV",
+    "Guildhest",
+    "Heavensward",
+    "Shadowbringers",
+    "Stormblood"
+  ]
 }

@@ -51,17 +51,55 @@ export class LogLineLine extends FFXIVParsedLogLine {
     this.message = line.arg(4);
   }
 
-  /** Check if this is a completion/ending message */
+  /**
+   * Check if this is the duty completion message, e.g.
+   * "The Aurum Vale completion time: 24:36."
+   *
+   * "<duty> has ended." is deliberately not matched. The game prints that
+   * whenever you leave a duty, completed or not.
+   */
   isCompletionMessage(): boolean {
-    return (
-      this.message.includes('completion time') ||
-      this.message.includes('has ended')
-    );
+    return this.message.includes('completion time');
   }
 
-  /** Check if this is a dungeon-related chat channel */
-  isDungeonChannel(): boolean {
+  /** "<arena> is sealed off!", printed when a boss fight starts. */
+  isArenaSealed(): boolean {
+    return this.message.includes('is sealed off!');
+  }
+
+  /**
+   * "<arena> is no longer sealed!", printed when a boss fight ends, either
+   * by the boss dying or the party being defeated.
+   */
+  isArenaUnsealed(): boolean {
+    return this.message.includes('is no longer sealed!');
+  }
+
+  /** Check if this is one of the system channels duty messages use. */
+  isDutyChannel(): boolean {
     return ['0840', '0839'].includes(this.channelId);
+  }
+}
+
+/**
+ * TYPE 04: REMOVE_COMBATANT
+ * Combatant removed from memory. Same layout as ADD_COMBATANT.
+ *
+ * Format: 04|[timestamp]|[actorId]|[name]|...
+ */
+export class RemoveCombatantLine extends FFXIVParsedLogLine {
+  readonly logType = LogType.REMOVE_COMBATANT;
+
+  /** Actor's unique ID (hex, 8 characters) */
+  readonly actorId: string;
+
+  /** Character/NPC name */
+  readonly name: string;
+
+  constructor(line: FFXIVLogLine) {
+    super(line);
+    this.actorId = line.arg(2);
+    this.name = line.arg(3);
   }
 }
 
@@ -348,14 +386,52 @@ export class UpdateHpLine extends FFXIVParsedLogLine {
   }
 }
 
+/**
+ * TYPE 33: DIRECTOR
+ * Duty director updates. The commands aren't documented anywhere official;
+ * the ones below come from real logs and match how Cactbot uses them.
+ *
+ * Format: 33|[timestamp]|[directorId]|[command]|[data0]|[data1]|[data2]|[data3]|[hash]
+ *
+ * Commands seen (hex):
+ *  - 40000001: duty commenced, data0 is the time limit in seconds
+ *  - 40000003: duty complete
+ *  - 40000005: party defeated in a trial/raid, the arena reset follows
+ *  - 40000006: arena reset done
+ *  - 80000004: periodic time remaining update
+ */
+export class DirectorLine extends FFXIVParsedLogLine {
+  readonly logType = LogType.DIRECTOR;
+
+  readonly directorId: string;
+
+  readonly command: string;
+
+  readonly data: string[];
+
+  constructor(line: FFXIVLogLine) {
+    super(line);
+    this.directorId = line.arg(2);
+    this.command = (line.arg(3) || '').toUpperCase();
+    this.data = [line.arg(4), line.arg(5), line.arg(6), line.arg(7)];
+  }
+
+  isDutyComplete(): boolean {
+    return this.command === '40000003';
+  }
+}
+
 export type ParsedLogLine =
   | LogLineLine
   | ChangePrimaryPlayerLine
   | AddCombatantLine
+  | RemoveCombatantLine
   | DeathLine
+  | BuffLine
   | InCombatLine
   | ContentFinderSettingsLine
-  | UpdateHpLine;
+  | UpdateHpLine
+  | DirectorLine;
 
 /**
  * Factory function to parse a raw log line into the appropriate typed class.
@@ -371,12 +447,20 @@ export function parseLogLine(line: FFXIVLogLine): ParsedLogLine | undefined {
       return new ChangePrimaryPlayerLine(line);
     case LogType.ADD_COMBATANT:
       return new AddCombatantLine(line);
+    case LogType.REMOVE_COMBATANT:
+      return new RemoveCombatantLine(line);
     case LogType.DEATH:
       return new DeathLine(line);
+    case LogType.BUFF:
+      return new BuffLine(line);
     case LogType.IN_COMBAT:
       return new InCombatLine(line);
     case LogType.CONTENT_FINDER_SETTINGS:
       return new ContentFinderSettingsLine(line);
+    case LogType.UPDATE_HP:
+      return new UpdateHpLine(line);
+    case LogType.DIRECTOR:
+      return new DirectorLine(line);
     default:
       return undefined;
   }

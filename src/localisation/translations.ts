@@ -12,7 +12,9 @@ const data: LocalizationDataType = {
   [Language.CHINESE_SIMPLIFIED]: ChineseSimplifiedTranslations,
 };
 
-const getLocalePhrase = (lang: Language, phrase: Phrase) => data[lang][phrase];
+// Fall back to English for phrases a language hasn't translated yet.
+const getLocalePhrase = (lang: Language, phrase: Phrase) =>
+  data[lang][phrase] ?? data[Language.ENGLISH][phrase];
 
 const getLocaleCategoryLabel = (
   lang: Language,

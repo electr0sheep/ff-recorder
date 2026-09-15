@@ -243,7 +243,7 @@ const ENGLISH: Translations = {
   [Phrase.StatusTitleReconfiguring]: 'Reconfiguring',
   [Phrase.StatusDescriptionRecording]: 'Warcraft Recorder is currently recording',
   [Phrase.StatusDescriptionForceEnd]: 'You can force the recording to end. Normally this should not be required. This can help end a failed Mythic+ run that would otherwise need a few minutes to wrap up.',
-  [Phrase.StatusDescriptionWaiting]: 'Waiting for World of Warcraft to start',
+  [Phrase.StatusDescriptionWaiting]: 'Waiting for World of Warcraft or FFXIV to start',
   [Phrase.StatusDescriptionConfiguredToRecord]: 'Warcraft Recorder is configured to record',
   [Phrase.StatusDescriptionMisconfigured]: 'Warcraft Recorder is misconfigured',
   [Phrase.StatusDescriptionResolveError]: 'Please resolve the error below',

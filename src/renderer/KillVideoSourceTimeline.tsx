@@ -90,7 +90,9 @@ const KillVideoSourceTimeline = (props: SourceTimelineProps) => {
     const el = videoPreviewRef.current;
     if (el) {
       el.currentTime = playheadTime;
-      if (playing) el.play();
+      // A pause or seek can interrupt this before playback starts; that
+      // rejection is expected and not worth surfacing.
+      if (playing) el.play().catch(() => {});
     }
   }, [playheadTime, playing]);
 
@@ -106,7 +108,7 @@ const KillVideoSourceTimeline = (props: SourceTimelineProps) => {
     const el = videoPreviewRef.current;
     if (!el) return;
     if (el.paused) {
-      el.play();
+      el.play().catch(() => {});
       setPlaying(true);
     } else {
       el.pause();

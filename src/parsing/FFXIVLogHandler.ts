@@ -39,8 +39,11 @@ enum RecordMode {
   Combat,
 
   /**
-   * Each boss is a video, delimited by the arena being sealed off: alliance
-   * raids, variant and criterion dungeons, which all have trash in between.
+   * Each boss is a video: alliance raids, variant and criterion dungeons,
+   * which all have trash in between. A pull starts when the arena is sealed
+   * off or the boss starts taking damage (the Crystal Tower raids never post
+   * the seal message), and ends on the boss dying, the arena unsealing or
+   * combat dropping.
    */
   Sealed,
 }
@@ -73,6 +76,12 @@ const COMBAT_END_GRACE_MS = 5000;
 const CACTBOT_ZONE_GRACE_MS = 2000;
 
 /**
+ * Seconds to cut back into the buffer when a pull is detected from the boss
+ * taking damage, which trails the actual pull by a few seconds.
+ */
+const BOSS_ENGAGE_CUTBACK_S = 5;
+
+/**
  * FFXIVLogHandler class. Turns the IINACT log stream into activities.
  */
 export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
@@ -98,7 +107,9 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
   private bossKilledThisPull = false;
 
   /** A pull end waiting out the grace period, see COMBAT_END_GRACE_MS. */
-  private pendingEnd: { timer: NodeJS.Timeout; timestamp: Date } | undefined;
+  private pendingEnd:
+    | { timer: NodeJS.Timeout; timestamp: Date; success: boolean }
+    | undefined;
 
   /** Last combat state reported by Cactbot, used for recovery on connect. */
   private cactbotInCombat = false;
@@ -423,7 +434,7 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
   /**
    * Start recording a boss pull (everything that isn't a whole run).
    */
-  private async startPull(timestamp: Date) {
+  private async startPull(timestamp: Date, cutbackSeconds = 3) {
     if (!this.currentZone) {
       return;
     }
@@ -457,8 +468,8 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
 
     activity.pull = this.currentPull;
 
-    // Cut back a few seconds into the buffer to catch the start of the pull.
-    await this.startRecording(activity, 3);
+    // Cut back into the buffer to catch the start of the pull.
+    await this.startRecording(activity, cutbackSeconds);
   }
 
   private async startRecording(activity: Activity, offset = 0) {
@@ -533,7 +544,7 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       );
     }, COMBAT_END_GRACE_MS);
 
-    this.pendingEnd = { timer, timestamp };
+    this.pendingEnd = { timer, timestamp, success };
   }
 
   private clearPendingEnd() {
@@ -574,16 +585,25 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
   }
 
   private async handleCombatChange(inCombat: boolean, timestamp: Date) {
-    if (this.mode !== RecordMode.Combat) {
-      // Runs record throughout, sealed content keys off the arena seal.
+    if (this.mode !== RecordMode.Combat && this.mode !== RecordMode.Sealed) {
+      // Runs record throughout.
       return;
     }
 
     if (inCombat) {
-      // Either a new pull, or combat resuming after a brief drop, in which
-      // case the pending end is cancelled and the recording carries on.
-      this.clearPendingEnd();
-      await this.startPull(timestamp);
+      // Combat resuming after a brief drop cancels a pending wipe and the
+      // recording carries on. A pending kill stands: after a boss dies in
+      // sealed content the next trash pack can follow within seconds.
+      if (this.pendingEnd && !this.pendingEnd.success) {
+        this.clearPendingEnd();
+      }
+
+      if (this.mode === RecordMode.Combat) {
+        await this.startPull(timestamp);
+      }
+
+      // Sealed content has trash, so combat alone doesn't mean a boss pull;
+      // those start from the arena seal or the boss taking damage.
       return;
     }
 
@@ -905,14 +925,8 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
    * HP updates for the boss feed the boss percentage on wipes. These are
    * frequent for every actor, so check the actor ID before parsing.
    */
-  private handleUpdateHp(line: FFXIVLogLine) {
-    const activity = FFXIVGenericLogHandler.activity;
-
-    if (!this.primaryBoss || !(activity instanceof FFXIVBossEncounter)) {
-      return;
-    }
-
-    if (line.arg(2) !== this.primaryBoss.id) {
+  private async handleUpdateHp(line: FFXIVLogLine) {
+    if (!this.primaryBoss || line.arg(2) !== this.primaryBoss.id) {
       return;
     }
 
@@ -922,7 +936,23 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       return;
     }
 
-    activity.updateHp(parsed.currentHp, parsed.maxHp);
+    const activity = FFXIVGenericLogHandler.activity;
+
+    if (activity instanceof FFXIVBossEncounter) {
+      activity.updateHp(parsed.currentHp, parsed.maxHp);
+      return;
+    }
+
+    if (
+      !activity &&
+      this.mode === RecordMode.Sealed &&
+      parsed.currentHp < parsed.maxHp
+    ) {
+      // The boss is taking damage, so the fight is on. This is the start
+      // signal for sealed content that never posts the "sealed off" message.
+      console.info('[FFXIVLogHandler] Boss engaged:', this.primaryBoss.name);
+      await this.startPull(parsed.timestamp, BOSS_ENGAGE_CUTBACK_S);
+    }
   }
 
   private getRelativeTimestamp(eventDate: Date) {

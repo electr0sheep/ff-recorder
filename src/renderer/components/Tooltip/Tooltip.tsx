@@ -3,6 +3,20 @@ import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 
 import { cn } from '../utils';
 
+const useFullscreenElement = () => {
+  const [element, setElement] = React.useState<Element | null>(
+    () => document.fullscreenElement,
+  );
+
+  React.useEffect(() => {
+    const onChange = () => setElement(document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  return element;
+};
+
 interface TooltipProps
   extends Omit<TooltipPrimitive.TooltipContentProps, 'content' | 'onClick'>,
     Pick<
@@ -28,6 +42,8 @@ const Tooltip = ({
   onClick,
   ...props
 }: TooltipProps) => {
+  const fullscreenElement = useFullscreenElement();
+
   return (
     <TooltipPrimitive.Root
       open={open}
@@ -44,7 +60,7 @@ const Tooltip = ({
       >
         {children}
       </TooltipPrimitive.Trigger>
-      <TooltipPrimitive.Portal>
+      <TooltipPrimitive.Portal container={fullscreenElement ?? undefined}>
         <TooltipPrimitive.Content
           side={side}
           sideOffset={sideOffset}

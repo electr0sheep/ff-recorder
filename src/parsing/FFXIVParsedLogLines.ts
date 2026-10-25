@@ -85,7 +85,7 @@ export class LogLineLine extends FFXIVParsedLogLine {
  * TYPE 04: REMOVE_COMBATANT
  * Combatant removed from memory. Same layout as ADD_COMBATANT.
  *
- * Format: 04|[timestamp]|[actorId]|[name]|...
+ * Format: 04|[timestamp]|[actorId]|[name]|[job]|[level]|[ownerId]|[worldId]|[world]|[npcNameId]|[npcBaseId]|[currentHp]|[maxHp]|...
  */
 export class RemoveCombatantLine extends FFXIVParsedLogLine {
   readonly logType = LogType.REMOVE_COMBATANT;
@@ -96,10 +96,18 @@ export class RemoveCombatantLine extends FFXIVParsedLogLine {
   /** Character/NPC name */
   readonly name: string;
 
+  /** HP the actor had when it was removed, NaN when not reported */
+  readonly currentHp: number;
+
+  /** Maximum HP, NaN when not reported */
+  readonly maxHp: number;
+
   constructor(line: FFXIVLogLine) {
     super(line);
     this.actorId = line.arg(2);
     this.name = line.arg(3);
+    this.currentHp = parseInt(line.arg(11), 10);
+    this.maxHp = parseInt(line.arg(12), 10);
   }
 }
 
@@ -364,6 +372,64 @@ export class BuffLine extends FFXIVParsedLogLine {
 }
 
 /**
+ * TYPE 21: ABILITY and TYPE 22: AOE_ABILITY
+ * An action resolving on a target. An AoE action writes one 22 line per
+ * target it hits. These are the only lines that report an enemy's HP; the
+ * 39 HP update lines only ever cover the party and its pets.
+ *
+ * Format: 21|[timestamp]|[sourceId]|[sourceName]|[abilityId]|[abilityName]|[targetId]|[targetName]|[flags1]|[value1]|...|[flags8]|[value8]|[targetCurrentHp]|[targetMaxHp]|[targetCurrentMp]|[targetMaxMp]|...
+ */
+export class AbilityLine extends FFXIVParsedLogLine {
+  readonly logType: LogType;
+
+  /** Acting actor's ID (hex, 8 characters) */
+  readonly sourceId: string;
+
+  /** Acting actor's name */
+  readonly sourceName: string;
+
+  /** Action ID (hex) */
+  readonly abilityId: string;
+
+  /** Action name */
+  readonly abilityName: string;
+
+  /** Target actor's ID (hex, 8 characters) */
+  readonly targetId: string;
+
+  /** Target actor's name */
+  readonly targetName: string;
+
+  /** Target's current HP, NaN when not reported */
+  readonly targetCurrentHp: number;
+
+  /** Target's maximum HP, NaN when not reported */
+  readonly targetMaxHp: number;
+
+  constructor(line: FFXIVLogLine) {
+    super(line);
+    this.logType =
+      line.type() === LogType.AOE_ABILITY
+        ? LogType.AOE_ABILITY
+        : LogType.ABILITY;
+    this.sourceId = line.arg(2);
+    this.sourceName = line.arg(3);
+    this.abilityId = line.arg(4);
+    this.abilityName = line.arg(5);
+    this.targetId = line.arg(6);
+    this.targetName = line.arg(7);
+    // Args 8-23 are eight pairs of effect flags and values.
+    this.targetCurrentHp = parseInt(line.arg(24), 10);
+    this.targetMaxHp = parseInt(line.arg(25), 10);
+  }
+
+  /** Whether a player character used the action. Player IDs start with 10. */
+  isFromPlayer(): boolean {
+    return this.sourceId.startsWith('10');
+  }
+}
+
+/**
  * TYPE 39: UPDATE_HP
  * HP update for a combatant.
  *
@@ -419,6 +485,11 @@ export class DirectorLine extends FFXIVParsedLogLine {
   isDutyComplete(): boolean {
     return this.command === '40000003';
   }
+
+  /** The party was defeated and the duty is resetting. */
+  isPartyDefeated(): boolean {
+    return this.command === '40000005';
+  }
 }
 
 export type ParsedLogLine =
@@ -427,6 +498,7 @@ export type ParsedLogLine =
   | AddCombatantLine
   | RemoveCombatantLine
   | DeathLine
+  | AbilityLine
   | BuffLine
   | InCombatLine
   | ContentFinderSettingsLine
@@ -451,6 +523,9 @@ export function parseLogLine(line: FFXIVLogLine): ParsedLogLine | undefined {
       return new RemoveCombatantLine(line);
     case LogType.DEATH:
       return new DeathLine(line);
+    case LogType.ABILITY:
+    case LogType.AOE_ABILITY:
+      return new AbilityLine(line);
     case LogType.BUFF:
       return new BuffLine(line);
     case LogType.IN_COMBAT:

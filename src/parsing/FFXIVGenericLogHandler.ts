@@ -143,6 +143,10 @@ export default abstract class FFXIVGenericLogHandler {
     );
     assert(actualOffset >= 0);
 
+    // The recording starts this far before the activity, which is where
+    // positions in the file are measured from.
+    activity.cutback = offset;
+
     try {
       FFXIVGenericLogHandler.activity = activity;
       await Recorder.getInstance().startRecording(actualOffset);
@@ -262,14 +266,27 @@ export default abstract class FFXIVGenericLogHandler {
         'obsRecEncoder',
       ) as ESupportedEncoders;
 
+      // Intermissions are cut out of the video, so they're passed on as
+      // positions in the file, which starts cutback seconds before the
+      // activity, and the cut has to span them as well as the video.
+      const toFilePosition = (date: Date) =>
+        (date.getTime() - lastActivity.startDate.getTime()) / 1000 +
+        lastActivity.cutback;
+
+      const skips = lastActivity.intermissions.map(({ start, end }) => ({
+        start: toFilePosition(start),
+        end: toFilePosition(end),
+      }));
+
       const queueItem: VideoQueueItem = {
         name: path.basename(videoFile, path.extname(videoFile)),
         source: videoFile,
         suffix,
         offset: 0, // We don't need to offset here, we've already cut the buffer back.
-        duration,
+        duration: duration + lastActivity.intermissionDuration,
         metadata,
         clip: false,
+        skips,
       };
 
       VideoProcessQueue.getInstance().queueVideo(queueItem);

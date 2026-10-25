@@ -175,6 +175,14 @@ type FileInfo = {
   birthTime: number;
 };
 
+/**
+ * A span of a video, in seconds from the start of its source.
+ */
+type TimeSpan = {
+  start: number;
+  end: number;
+};
+
 type VideoQueueItem = {
   name: string; // Can be an OBS timestamp if recording or more complicated if clipping.
   source: string; // Can be either a path or a URL.
@@ -183,6 +191,9 @@ type VideoQueueItem = {
   duration: number;
   clip: boolean;
   metadata: Metadata;
+  // Spans of the source to leave out of the video, e.g. a mid-fight
+  // cutscene. Positions are in the source, like the offset.
+  skips?: TimeSpan[];
 };
 
 /**
@@ -373,6 +384,7 @@ type AppState = {
   language: Language;
   cloudStatus: CloudStatus;
   diskStatus: DiskStatus;
+  runningGames: RunningGames;
   chatOpen: boolean;
   preferredViewpoint: string;
 };
@@ -388,6 +400,15 @@ type CombatLoggingStatus = {
   era: CombatLogPathStatus;
   retailPtr: CombatLogPathStatus;
   classicPtr: CombatLogPathStatus;
+};
+
+/**
+ * Which games the poller has detected running. A game only counts if the
+ * config says to record it, matching the poller's own flags.
+ */
+type RunningGames = {
+  wow: boolean;
+  ffxiv: boolean;
 };
 
 type CloudState = {
@@ -734,6 +755,7 @@ export {
   FileInfo,
   FileFinderCallbackType,
   VideoQueueItem,
+  TimeSpan,
   Metadata,
   RendererVideo,
   RendererClip,
@@ -786,6 +808,7 @@ export {
   ActivityStatus,
   CombatLoggingStatus,
   CombatLogPathStatus,
+  RunningGames,
   KillVideoQueueItem,
   KillVideoSegment,
   KillVideoStatus,

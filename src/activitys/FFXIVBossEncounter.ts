@@ -87,6 +87,13 @@ export default class FFXIVBossEncounter extends Activity {
 
     const bossPercent = Math.round((100 * this.currentHp) / this.maxHp);
 
+    // Death markers are placed in the video, which has the intermissions
+    // taken out.
+    const deaths = this.deaths.map((death) => ({
+      ...death,
+      timestamp: this.toVideoTime(death.timestamp),
+    }));
+
     return {
       category: this._videoCategory,
       encounterName: this.mapName,
@@ -95,11 +102,11 @@ export default class FFXIVBossEncounter extends Activity {
       duration: this.duration,
       result: this.result,
       player: this.player.getRaw(),
-      deaths: this.deaths,
+      deaths,
       overrun: this.overrun,
       combatants: rawCombatants,
       start: this.startDate.getTime(),
-      uniqueHash: this.getUniqueHash(this.pull),
+      uniqueHash: this.getUniqueHash(this.pull, this.mapName, this.bossName),
       bossPercent,
       pull: this.pull,
     };

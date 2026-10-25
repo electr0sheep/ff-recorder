@@ -9,6 +9,7 @@ import {
   KillVideoStatus,
   RendererVideo,
   SaveStatus,
+  TimeSpan,
   UploadQueueItem,
   VideoQueueItem,
 } from './types';
@@ -45,6 +46,13 @@ let ffmpegPathAbs = devMode
 
 ffmpegPathAbs = fixPathWhenPackaged(ffmpegPathAbs);
 ffmpeg.setFfmpegPath(ffmpegPathAbs);
+
+/**
+ * The shortest span worth keeping when cutting around skips. Cuts land on
+ * keyframes, which the recorder puts a second apart, so anything shorter
+ * may come out empty.
+ */
+const MIN_SPAN_SECONDS = 1;
 
 /**
  * A queue for cutting videos to size.
@@ -711,7 +719,7 @@ export default class VideoProcessQueue {
    * This can be called either to cut a clip, or to cut a video on
    * finishing. Keep in mind that a video finishing may have a duration
    * less than the source video, if the recording was stopped by a log
-   * timeout.
+   * timeout. Any skips are left out of the video, see cutAndJoinSpans.
    */
   private async cutVideo(
     data: VideoQueueItem,
@@ -724,6 +732,7 @@ export default class VideoProcessQueue {
       suffix: data.suffix,
       offset: data.offset,
       duration: data.duration,
+      skips: data.skips,
     });
 
     let start = data.offset;
@@ -735,9 +744,83 @@ export default class VideoProcessQueue {
 
     const outputPath = VideoProcessQueue.getOutputVideoPath(data, outputDir);
 
-    const fn = ffmpeg(data.source)
-      .setStartTime(start)
-      .setDuration(data.duration)
+    const spans = VideoProcessQueue.getKeptSpans(
+      start,
+      data.duration,
+      data.skips ?? [],
+    );
+
+    console.time('[VideoProcessQueue] Video cut took:');
+
+    if (spans.length === 1) {
+      await VideoProcessQueue.cutSpan(data.source, spans[0], outputPath, true);
+    } else {
+      await VideoProcessQueue.cutAndJoinSpans(data.source, spans, outputPath);
+    }
+
+    console.timeEnd('[VideoProcessQueue] Video cut took:');
+    return outputPath;
+  }
+
+  /**
+   * Work out the spans of the source to keep: the cut from start for
+   * duration, less the skips. Scraps shorter than MIN_SPAN_SECONDS are
+   * dropped as they would only add a glitch at a join.
+   */
+  private static getKeptSpans(
+    start: number,
+    duration: number,
+    skips: TimeSpan[],
+  ): TimeSpan[] {
+    const end = start + duration;
+    const kept: TimeSpan[] = [];
+    const sorted = [...skips].sort((a, b) => a.start - b.start);
+    let cursor = start;
+
+    sorted.forEach((skip) => {
+      const skipStart = Math.max(skip.start, cursor);
+      const skipEnd = Math.min(skip.end, end);
+
+      if (skipEnd <= skipStart) {
+        return;
+      }
+
+      if (skipStart - cursor >= MIN_SPAN_SECONDS) {
+        kept.push({ start: cursor, end: skipStart });
+      }
+
+      cursor = skipEnd;
+    });
+
+    if (end - cursor >= MIN_SPAN_SECONDS) {
+      kept.push({ start: cursor, end });
+    }
+
+    if (kept.length === 0) {
+      if (skips.length > 0) {
+        console.warn('[VideoProcessQueue] Skips cover the video, keeping it');
+      }
+
+      return [{ start, end }];
+    }
+
+    return kept;
+  }
+
+  /**
+   * Stream copy a span of the source into a new file. No re-encoding, so it
+   * takes seconds, not minutes. The start snaps back to the previous
+   * keyframe, which is at most a second early.
+   */
+  private static async cutSpan(
+    source: string,
+    span: TimeSpan,
+    outputPath: string,
+    faststart: boolean,
+  ) {
+    const fn = ffmpeg(source)
+      .setStartTime(span.start)
+      .setDuration(span.end - span.start)
       // Crucially we copy the video and audio, so we don't do any
       // re-encoding which would take time and CPU.
       .withVideoCodec('copy')
@@ -751,13 +834,75 @@ export default class VideoProcessQueue {
       // some players, but does extend the video slightly depending on
       // the keyframe alignment.
       .outputOption('-avoid_negative_ts make_zero')
-      .outputOption('-movflags +faststart')
       .output(outputPath);
 
-    console.time('[VideoProcessQueue] Video cut took:');
+    if (faststart) {
+      // Puts the index at the front for streaming. It rewrites the file, so
+      // it's only worth doing on the final video, not the parts of a join.
+      fn.outputOption('-movflags +faststart');
+    }
+
     await VideoProcessQueue.ffmpegWrapper(fn, 'Video cut');
-    console.timeEnd('[VideoProcessQueue] Video cut took:');
-    return outputPath;
+  }
+
+  /**
+   * Cut several spans of the source and join them into one video, which is
+   * how a mid-fight cutscene is left out. Each span is cut to a part file
+   * next to the source, then the parts are joined with FFmpeg's concat
+   * demuxer. Both steps are stream copies, so nothing is re-encoded, and
+   * each part starts on a keyframe so the joins are clean.
+   */
+  private static async cutAndJoinSpans(
+    source: string,
+    spans: TimeSpan[],
+    outputPath: string,
+  ) {
+    const base = source.replace(/\.[^./\\]+$/, '');
+    const listPath = `${base}.parts.txt`;
+    const parts = spans.map((_, i) => `${base}.part${i}.mp4`);
+
+    try {
+      for (let i = 0; i < spans.length; i++) {
+        console.info(
+          '[VideoProcessQueue] Cutting part',
+          i + 1,
+          'of',
+          spans.length,
+          spans[i],
+        );
+
+        // eslint-disable-next-line no-await-in-loop
+        await VideoProcessQueue.cutSpan(source, spans[i], parts[i], false);
+      }
+
+      // The concat demuxer reads the parts from a list file. Paths go in
+      // single quotes with any single quote in them escaped, per FFmpeg's
+      // quoting rules; forward slashes keep Windows paths out of trouble.
+      const list = parts
+        .map((part) => part.replace(/\\/g, '/').replace(/'/g, "'\\''"))
+        .map((part) => `file '${part}'`)
+        .join('\n');
+
+      await fspromise.writeFile(listPath, `${list}\n`);
+
+      const fn = ffmpeg(listPath)
+        .inputOptions(['-f concat', '-safe 0'])
+        .withVideoCodec('copy')
+        .withAudioCodec('copy')
+        .outputOption('-map 0')
+        .outputOption('-movflags +faststart')
+        .output(outputPath);
+
+      await VideoProcessQueue.ffmpegWrapper(fn, 'Video join');
+    } finally {
+      await Promise.all(
+        [listPath, ...parts].map((file) =>
+          fspromise.rm(file, { force: true }).catch((error) => {
+            console.warn('[VideoProcessQueue] Failed to remove', file, error);
+          }),
+        ),
+      );
+    }
   }
 
   /**

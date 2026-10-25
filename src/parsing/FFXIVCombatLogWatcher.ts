@@ -14,6 +14,18 @@ interface WebSocketMessage {
 }
 
 /**
+ * IINACT's OnlineStatusChanged event: a player's online status changed.
+ * The target is their actor ID as a number, rawStatus the OnlineStatus
+ * sheet row and status IINACT's name for it, "Unknown" for most.
+ */
+interface OnlineStatusMessage {
+  type: string;
+  target?: number;
+  rawStatus?: number;
+  status?: string;
+}
+
+/**
  * Party member data from the PartyChanged event.
  */
 export interface PartyMember {
@@ -199,10 +211,18 @@ export default class FFXIVCombatLogWatcher extends EventEmitter {
       return;
     }
 
-    // Subscribe to LogLine events and Cactbot state events
+    // Subscribe to LogLine events, Cactbot state events and IINACT's own
+    // party and online status events.
     const subscribeMessage = JSON.stringify({
       call: 'subscribe',
-      events: ['LogLine', 'onZoneChangedEvent', 'onInCombatChangedEvent', 'onPlayerChangedEvent', 'PartyChanged'],
+      events: [
+        'LogLine',
+        'onZoneChangedEvent',
+        'onInCombatChangedEvent',
+        'onPlayerChangedEvent',
+        'PartyChanged',
+        'OnlineStatusChanged',
+      ],
     });
 
     console.debug('[FFXIVCombatLogWatcher] Sending subscribe message');
@@ -250,13 +270,23 @@ export default class FFXIVCombatLogWatcher extends EventEmitter {
         this.updateGameState(message.rawLine);
         this.resetTimeout();
       } else if (message.type === 'onZoneChangedEvent' && message.detail) {
-        // Cactbot zone change event - update our state
-        const zoneName = message.detail.zoneName as string;
+        // Cactbot zone change event - update our state. The name is null
+        // while the game is loading, and Cactbot re-sends it several times a
+        // second then. That says nothing about the zone, so skip it.
+        const zoneName = message.detail.zoneName;
+
+        if (typeof zoneName !== 'string' || zoneName.length === 0) {
+          console.debug(
+            '[FFXIVCombatLogWatcher] Ignoring zone change event with no name',
+          );
+          return;
+        }
+
         console.info(
           '[FFXIVCombatLogWatcher] Received zone change event:',
           zoneName,
         );
-        this.gameState.zoneName = zoneName || null;
+        this.gameState.zoneName = zoneName;
         this.gameState.timestamp = new Date();
         // Emit the zone change so FFXIVLogHandler can handle it
         this.emit('cactbotZoneChange', zoneName);
@@ -296,6 +326,33 @@ export default class FFXIVCombatLogWatcher extends EventEmitter {
           );
           this.emit('partyChanged', party);
         }
+      } else if (message.type === 'OnlineStatusChanged') {
+        // A player's online status changed, which covers going into and
+        // out of a cutscene. IINACT caches the last one and re-sends it on
+        // subscribing, so the first one after connecting can be stale.
+        const { target, rawStatus, status } =
+          message as unknown as OnlineStatusMessage;
+
+        if (typeof target !== 'number' || typeof rawStatus !== 'number') {
+          return;
+        }
+
+        const targetId = target.toString(16).toUpperCase();
+
+        // Everyone in range sends these, which is noisy in a town, so only
+        // our own are worth an info line.
+        const log =
+          targetId === this.gameState.playerId ? console.info : console.debug;
+
+        log(
+          '[FFXIVCombatLogWatcher] Received online status event, target:',
+          targetId,
+          'status:',
+          status,
+          rawStatus,
+        );
+
+        this.emit('onlineStatusChanged', targetId, rawStatus);
       }
     } catch (error) {
       console.debug('[FFXIVCombatLogWatcher] Failed to parse message:', error);

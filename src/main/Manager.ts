@@ -36,6 +36,7 @@ import {
   RendererVideo,
   KillVideoSegment,
   CombatLogPathStatus,
+  RunningGames,
 } from './types';
 import {
   getObsVideoConfig,
@@ -135,11 +136,21 @@ export default class Manager {
       setTimeout(() => this.refreshStatus(), 0);
     });
 
+    // A process event can change which games are running without changing
+    // the recorder state, e.g. a second game starting while the buffer is
+    // already running. Refresh once the handler settles so the status card
+    // names the right game(s) either way.
+    const refresh = () => this.refreshStatus();
+
     this.poller
-      .on(WowProcessEvent.STARTED, () => this.onWowStarted())
-      .on(WowProcessEvent.STOPPED, () => this.onWowStopped())
-      .on(FFXIVProcessEvent.STARTED, () => this.onFFXIVStarted())
-      .on(FFXIVProcessEvent.STOPPED, () => this.onFFXIVStopped());
+      .on(WowProcessEvent.STARTED, () => this.onWowStarted().finally(refresh))
+      .on(WowProcessEvent.STOPPED, () => this.onWowStopped().finally(refresh))
+      .on(FFXIVProcessEvent.STARTED, () =>
+        this.onFFXIVStarted().finally(refresh),
+      )
+      .on(FFXIVProcessEvent.STOPPED, () =>
+        this.onFFXIVStopped().finally(refresh),
+      );
   }
 
   /**
@@ -593,7 +604,13 @@ export default class Manager {
    * Send a message to the frontend to update the recorder status icon.
    */
   private refreshRecStatus(status: RecStatus, msg = '') {
-    send('updateRecStatus', status, msg);
+    // Include which games are running so the status card can name them.
+    const games: RunningGames = {
+      wow: this.poller.isWowRunning(),
+      ffxiv: this.poller.isFFXIVRunning(),
+    };
+
+    send('updateRecStatus', status, msg, games);
 
     const activity = LogHandler.activity ?? FFXIVGenericLogHandler.activity;
 

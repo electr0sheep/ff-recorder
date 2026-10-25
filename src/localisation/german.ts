@@ -248,7 +248,7 @@ const GERMAN: Translations = {
   [Phrase.StatusDescriptionConfiguredToRecord]: 'Warcraft Recorder ist darauf eingestellt aufzunehmen',
   [Phrase.StatusDescriptionMisconfigured]: 'Warcraft Recorder ist ungültig eingestellt',
   [Phrase.StatusDescriptionResolveError]: 'Bitte lies den untenstehenden Fehler',
-  [Phrase.StatusDescriptionDetectedRunning]: 'Es wurde erkannt, dass World of Warcraft läuft',
+  [Phrase.StatusDescriptionDetectedWowRunning]: 'Es wurde erkannt, dass World of Warcraft läuft',
   [Phrase.StatusDescriptionWatchingLogs]: 'Warcraft Recorder wartet auf ein Event, dass im Combat Log steht, zum auslösen einer Aufnahme. Liest Log Pfäde',
   [Phrase.StatusDescriptionTip]: 'Hinweis',
   [Phrase.StatusDescriptionIfNoRecording]: 'Wenn die Aufnahme nicht gestartet ist, überprüfe deine Log-Einstellungen im Spiel und gehe sicher, dass dein Log Pfad richtig ist.',

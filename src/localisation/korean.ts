@@ -248,7 +248,7 @@ const KOREAN: Translations = {
   [Phrase.StatusDescriptionConfiguredToRecord]: '프로그램이 녹화하도록 구성되었습니다.',
   [Phrase.StatusDescriptionMisconfigured]: '프로그램이 잘못 구성되었습니다.',
   [Phrase.StatusDescriptionResolveError]: '아래 오류를 해결하세요.',
-  [Phrase.StatusDescriptionDetectedRunning]: '게임이 실행 중임을 감지했습니다.',
+  [Phrase.StatusDescriptionDetectedWowRunning]: '게임이 실행 중임을 감지했습니다.',
   [Phrase.StatusDescriptionWatchingLogs]: '기록 가능한 이벤트가 전투 로그에 나타나기를 기다리고 있습니다.',
   [Phrase.StatusDescriptionTip]: 'Tip',
   [Phrase.StatusDescriptionIfNoRecording]: '기록이 시작되지 않으면 게임 내 로그 애드온 설정을 확인하고 로그 경로 구성이 올바른지 확인하세요.',

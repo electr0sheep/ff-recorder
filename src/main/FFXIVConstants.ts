@@ -232,6 +232,7 @@ const zones: Zone[] = [
     name: 'The Binding Coil of Bahamut - Turn 4',
     expansion: Expansion['A Realm Reborn'],
     type: ContentType.Raid,
+    gauntlet: true,
     difficulty: Difficulty.Normal,
   },
   {
@@ -654,6 +655,7 @@ const zones: Zone[] = [
     name: 'Alexander - The Cuff of the Father',
     expansion: Expansion.Heavensward,
     type: ContentType.Raid,
+    gauntlet: true,
     difficulty: Difficulty.Normal,
   },
   {
@@ -710,6 +712,7 @@ const zones: Zone[] = [
     name: 'Alexander - The Cuff of the Father',
     expansion: Expansion.Heavensward,
     type: ContentType.Raid,
+    gauntlet: true,
     difficulty: Difficulty.Savage,
   },
   {
@@ -3522,6 +3525,14 @@ const zones: Zone[] = [
     difficulty: Difficulty.Normal,
   },
   {
+    id: 1368,
+    rawName: 'Windurst: The Third Walk',
+    name: 'Windurst: The Third Walk',
+    expansion: Expansion.Dawntrail,
+    type: ContentType['Alliance Raid'],
+    difficulty: Difficulty.Normal,
+  },
+  {
     id: 1306,
     rawName: 'the Windward Wilds (Extreme)',
     name: 'The Windward Wilds',
@@ -3543,6 +3554,14 @@ const zones: Zone[] = [
     name: 'The Final Verse',
     expansion: Expansion.Dawntrail,
     type: ContentType['Deep Dungeon'],
+    difficulty: Difficulty.Normal,
+  },
+  {
+    id: 1345,
+    rawName: 'the Clyteum',
+    name: 'The Clyteum',
+    expansion: Expansion.Dawntrail,
+    type: ContentType.Dungeon,
     difficulty: Difficulty.Normal,
   },
   {
@@ -3880,8 +3899,21 @@ const BNpcNameIdToNameMap = new Map<number, string>([
   [13757, 'Soldier S0'],
   [13749, 'Indefatigable Defense: Valia Pira'],
   [13970, 'Chirurgeon General'],
-  [14239, 'Hooded Headsmen'],
+  // Four headsmen with different HP fought at once. 14239 is the hooded one
+  // standing untargetable at the back, so it's left out.
+  [14047, 'Hooded Headsmen'], // Bloody Headsman
+  [14048, 'Hooded Headsmen'], // Ravenous Headsman
+  [14049, 'Hooded Headsmen'], // Pale Headsman
+  [14050, 'Hooded Headsmen'], // Pestilent Headsman
   [13974, 'Memory Meld: The Immortal Remains'],
+  [14270, 'Treno Catoblepas'],
+  [14271, 'Amdusias'],
+  [14288, 'Survivor of Storms: Thundergust Griffin'],
+  // The Clyteum. Malphas spawns with a ring of 16.9M "Scrap" props that are
+  // never targetable, so those stay out.
+  [14716, 'Eye of the Scorpion'],
+  [14734, 'Chort'],
+  [14758, 'Malphas'],
   // Alliance Raids
   [706, 'Bone Dragon'],
   [710, 'Thanatos'],
@@ -3945,12 +3977,33 @@ const BNpcNameIdToNameMap = new Map<number, string>([
   [11301, 'Eulogia'],
   [13351, 'Prishe of the Distant Chains'],
   [13662, 'Fafnir the Forgotten'],
-  [13640, 'The Ark Angels'], // this is definitely wrong. Council fights aren't going to work
+  // Five bosses fought at once with equal HP, all mapped to one name so the
+  // handler treats them as a single encounter. 13640 is a decoy "Ark Angel
+  // HM" that briefly spawns as untargetable clones mid-fight, so it's left
+  // out.
+  [13641, 'The Ark Angels'], // Ark Angel GK
+  [13642, 'The Ark Angels'], // Ark Angel TT
+  [13643, 'The Ark Angels'], // Ark Angel MR
+  [13644, 'The Ark Angels'], // Ark Angel EV
+  [13645, 'The Ark Angels'], // Ark Angel HM
   [13653, 'Kindred Rage: Shadow Lord'],
   [14053, 'Faithbound Kirin'],
-  [14231, 'Ultima, the Feared and Omega, the One'], // this is also wrong
-  [14044, "Kam'lanaut"], // need to check
+  // Two bosses fought at once with separate HP bars that the fight keeps
+  // equalised, mapped to one name so both have to go down for the kill.
+  [14231, 'Ultima, the Feared and Omega, the One'], // Ultima, the Feared
+  [14230, 'Ultima, the Feared and Omega, the One'], // Omega, the One
+  // Kam'lanaut has two name IDs. 14044 is three untargetable stand-ins at
+  // 1.88M HP that spawn alongside him and are never hit, so it's left out.
+  [14043, "Kam'lanaut"],
   [14086, "Legacy of the Zilart: Eald'narche"],
+  // Windurst: The Third Walk. Shantotto despawns at 1 HP rather than dying.
+  // The last fight starts as two linked Shinryu Paradox actors, which are
+  // despawned with HP left at the transition, and ends on the Hollow King.
+  [14778, 'Shantotto the Demon'],
+  [14529, 'Alexander Resurrected'],
+  [14779, 'Promathia'],
+  [14729, 'Shinryu Paradox'],
+  [14730, 'Hollow King'],
 ]);
 
 const BNpcBaseIdToNameMap = new Map<number, string>([
@@ -4258,11 +4311,17 @@ const BNpcBaseIdToNameMap = new Map<number, string>([
   [18349, 'Soldier S0'],
   [18318, 'Indefatigable Defense: Valia Pira'],
   [18575, 'Chirurgeon General'],
-  [18576, 'Hooded Headsmen'], // this is for "Bloddy Headsman"
+  [18576, 'Hooded Headsmen'], // Bloody Headsman
+  [18578, 'Hooded Headsmen'], // Ravenous Headsman
+  [18577, 'Hooded Headsmen'], // Pale Headsman
+  [18579, 'Hooded Headsmen'], // Pestilent Headsman
   [18622, 'Memory Meld: The Immortal Remains'],
-  [14270, 'Treno Catoblepas'],
-  [14271, 'Amddusias'],
-  [14288, 'Survivor of Storms: Thundergust Griffin'],
+  [18497, 'Treno Catoblepas'],
+  [19063, 'Amdusias'],
+  [19045, 'Survivor of Storms: Thundergust Griffin'],
+  [19500, 'Eye of the Scorpion'],
+  [19519, 'Chort'],
+  [19496, 'Malphas'],
   // Alliance Raids
   [1234567890, 'Bone Dragon'],
   [1234567890, 'Thanatos'],
@@ -4326,12 +4385,22 @@ const BNpcBaseIdToNameMap = new Map<number, string>([
   [1234567890, 'Eulogia'],
   [18035, 'Prishe of the Distant Chains'],
   [16869, 'Fafnir the Forgotten'],
-  [18051, 'The Ark Angels'], // this is definitely wrong. Council fights aren't going to work Ark Angel MR
+  [18053, 'The Ark Angels'], // Ark Angel GK
+  [18052, 'The Ark Angels'], // Ark Angel TT
+  [18051, 'The Ark Angels'], // Ark Angel MR
+  [18050, 'The Ark Angels'], // Ark Angel EV
+  [18049, 'The Ark Angels'], // Ark Angel HM
   [18007, 'Kindred Rage: Shadow Lord'],
   [18748, 'Faithbound Kirin'],
-  [18713, 'Ultima, the Feared and Omega, the One'], // this is also wrong
-  [18681, "Kam'lanaut"], // need to check
+  [18713, 'Ultima, the Feared and Omega, the One'], // Ultima only, unverified
+  [18681, "Kam'lanaut"], // unverified, may be the stand-ins' base ID
   [17935, "Legacy of the Zilart: Eald'narche"],
+  [19871, 'Shantotto the Demon'],
+  [19804, 'Alexander Resurrected'],
+  [19950, 'Promathia'],
+  [19858, 'Shinryu Paradox'],
+  [19859, 'Shinryu Paradox'],
+  [19862, 'Hollow King'],
   // Variant Dungeons
   [11442, 'Geryon the Steer'],
   [11419, 'Thorne Knight'],

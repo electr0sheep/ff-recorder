@@ -8,7 +8,7 @@ import {
   LogLineLine,
   DeathLine,
   InCombatLine,
-  UpdateHpLine,
+  AbilityLine,
   DirectorLine,
 } from './FFXIVParsedLogLines';
 import Combatant from 'main/Combatant';
@@ -35,14 +35,24 @@ enum RecordMode {
   /**
    * Each pull is a video, delimited by the in-game combat flag and the duty
    * director: trials, raids (including ultimates) and chaotic alliance raids.
+   * A mid-fight cutscene drops the flag too; the pull is held open through
+   * it and the cutscene cut out of the video, see holdPull.
    */
   Combat,
 
   /**
+   * The whole duty is one pull: raids that are a gauntlet of trash waves
+   * with no boss (Binding Coil Turn 4, Alexander Cuff of the Father). Combat
+   * drops between the waves, so a pull starts on the first combat and only
+   * ends on the duty completing, the party being defeated or leaving.
+   */
+  Gauntlet,
+
+  /**
    * Each boss is a video: alliance raids, variant and criterion dungeons,
    * which all have trash in between. A pull starts when the arena is sealed
-   * off or the boss starts taking damage (the Crystal Tower raids never post
-   * the seal message), and ends on the boss dying, the arena unsealing or
+   * off or a player hits the boss (the Crystal Tower raids never post the
+   * seal message), and ends on the boss dying, the arena unsealing or
    * combat dropping.
    */
   Sealed,
@@ -51,7 +61,8 @@ enum RecordMode {
 /**
  * A boss actor we've seen spawn in the current duty. Bosses spawn with a
  * pile of helper actors sharing their name, so every actor is tracked and
- * the living one with the most HP is treated as the real boss.
+ * the living one with the most HP is treated as the real boss. Council
+ * fights have several real bosses with equal HP, see handleBossDefeated.
  */
 type BossActor = {
   id: string;
@@ -76,10 +87,37 @@ const COMBAT_END_GRACE_MS = 5000;
 const CACTBOT_ZONE_GRACE_MS = 2000;
 
 /**
- * Seconds to cut back into the buffer when a pull is detected from the boss
- * taking damage, which trails the actual pull by a few seconds.
+ * Seconds to cut back into the buffer when a pull is detected from a player
+ * hitting the boss, which trails the actual pull by a few seconds.
  */
 const BOSS_ENGAGE_CUTBACK_S = 5;
+
+/**
+ * Seconds to cut back into the buffer when a pull starts on the combat flag,
+ * and when one resumes after a cutscene, as the flag trails the first hit.
+ */
+const PULL_CUTBACK_S = 3;
+
+/**
+ * The online status of a player watching a cutscene, as carried by IINACT's
+ * OnlineStatusChanged event (its own name for it is InCutscene).
+ */
+const ONLINE_STATUS_CUTSCENE = 15;
+
+/**
+ * How close the player going into (or coming out of) a cutscene and combat
+ * dropping have to be for the drop to be the cutscene's doing. Fights with a
+ * mid-fight cutscene drop combat for it and pick it up again after, so such
+ * a drop is an intermission in the pull, not a wipe.
+ */
+const CUTSCENE_DROP_WINDOW_MS = 15000;
+
+/**
+ * The longest a pull is held open through a cutscene. The Porta Decumana's
+ * runs about five minutes unskipped, so this has headroom; a pull still
+ * waiting after this ends as a wipe where combat dropped.
+ */
+const INTERMISSION_MAX_MS = 10 * 60 * 1000;
 
 /**
  * FFXIVLogHandler class. Turns the IINACT log stream into activities.
@@ -96,7 +134,8 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
 
   private playerName: string | undefined;
 
-  private currentPull = 0;
+  /** Pulls started in this duty, keyed by boss name. */
+  private pullsByBoss = new Map<string, number>();
 
   /** Boss actors seen in the current duty, keyed by actor ID. */
   private bossActors = new Map<string, BossActor>();
@@ -110,6 +149,21 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
   private pendingEnd:
     | { timer: NodeJS.Timeout; timestamp: Date; success: boolean }
     | undefined;
+
+  /**
+   * The cutscene the player is in or was last in, see isCutsceneDrop. The
+   * end is unset while they're still watching it.
+   */
+  private cutscene: { start: Date; end?: Date } | undefined;
+
+  /**
+   * A pull held open while combat is down for a cutscene, see holdPull. The
+   * start is when combat dropped; the timer gives up if it never comes back.
+   */
+  private intermission: { start: Date; timer: NodeJS.Timeout } | undefined;
+
+  /** A run's boss segment end waiting out the same grace period. */
+  private pendingSegmentEnd: { timer: NodeJS.Timeout } | undefined;
 
   /** Last combat state reported by Cactbot, used for recovery on connect. */
   private cactbotInCombat = false;
@@ -140,7 +194,8 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     this.onLine(LogType.LOG_LINE, (line) => this.handleChat(line));
     this.onLine(LogType.DEATH, (line) => this.handleDeath(line));
     this.onLine(LogType.IN_COMBAT, (line) => this.handleInCombat(line));
-    this.onLine(LogType.UPDATE_HP, (line) => this.handleUpdateHp(line));
+    this.onLine(LogType.ABILITY, (line) => this.handleAbility(line));
+    this.onLine(LogType.AOE_ABILITY, (line) => this.handleAbility(line));
     this.onLine(LogType.DIRECTOR, (line) => this.handleDirector(line));
 
     // Cactbot state events. These are re-sent when we connect (in response
@@ -168,10 +223,19 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     this.combatLogWatcher.on('partyChanged', (party: PartyMember[]) => {
       this.handlePartyChanged(party);
     });
+
+    this.combatLogWatcher.on(
+      'onlineStatusChanged',
+      (targetId: string, status: number) => {
+        this.handleOnlineStatus(targetId, status);
+      },
+    );
   }
 
   public destroy() {
     this.clearPendingEnd();
+    this.clearPendingSegmentEnd();
+    this.clearIntermission();
     this.clearPendingCactbotZone();
     super.destroy();
   }
@@ -351,13 +415,19 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
 
   private resetPullState() {
     this.clearPendingEnd();
-    this.currentPull = 0;
+    this.clearPendingSegmentEnd();
+    this.clearIntermission();
+    this.pullsByBoss.clear();
     this.bossActors.clear();
     this.primaryBoss = undefined;
     this.bossKilledThisPull = false;
   }
 
   private static getRecordMode(zone: Zone): RecordMode {
+    if (zone.gauntlet) {
+      return RecordMode.Gauntlet;
+    }
+
     if (zone.difficulty === Difficulty.Chaotic) {
       // A single boss that resets on a wipe, so it behaves like a raid.
       return RecordMode.Combat;
@@ -434,7 +504,7 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
   /**
    * Start recording a boss pull (everything that isn't a whole run).
    */
-  private async startPull(timestamp: Date, cutbackSeconds = 3) {
+  private async startPull(timestamp: Date, cutbackSeconds = PULL_CUTBACK_S) {
     if (!this.currentZone) {
       return;
     }
@@ -451,7 +521,6 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       return;
     }
 
-    this.currentPull += 1;
     this.bossKilledThisPull = false;
 
     const bossName = this.primaryBoss
@@ -466,10 +535,26 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       category,
     );
 
-    activity.pull = this.currentPull;
+    activity.pull = this.countPull(bossName);
 
     // Cut back into the buffer to catch the start of the pull.
     await this.startRecording(activity, cutbackSeconds);
+  }
+
+  /**
+   * Pulls are numbered per boss, so a wipe and a retry on Fafnir are Fafnir
+   * 1 and 2 while Prishe before them stays 1. Trials and raids have one boss
+   * per duty, so for them this is the same as counting per visit.
+   */
+  private countPull(bossName: string) {
+    const pull = (this.pullsByBoss.get(bossName) ?? 0) + 1;
+    this.pullsByBoss.set(bossName, pull);
+    return pull;
+  }
+
+  private uncountPull(bossName: string) {
+    const pull = this.pullsByBoss.get(bossName) ?? 0;
+    this.pullsByBoss.set(bossName, Math.max(0, pull - 1));
   }
 
   private async startRecording(activity: Activity, offset = 0) {
@@ -496,7 +581,13 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
    */
   private async endRecording(timestamp: Date, success: boolean) {
     this.clearPendingEnd();
+    this.clearPendingSegmentEnd();
     const activity = FFXIVGenericLogHandler.activity;
+
+    // A pull ending while held open for a cutscene ends where combat
+    // dropped: whatever ended it happened in the cutscene, not the fight.
+    const endDate = this.intermission?.start ?? timestamp;
+    this.clearIntermission();
 
     if (!activity) {
       return;
@@ -510,7 +601,7 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     }
 
     if (activity instanceof FFXIVDungeon) {
-      activity.endCurrentTimelineSegment(timestamp);
+      activity.endCurrentTimelineSegment(endDate);
     }
 
     console.info(
@@ -520,7 +611,7 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       activity.category,
     );
 
-    activity.end(timestamp, success);
+    activity.end(endDate, success);
     await FFXIVGenericLogHandler.endActivity();
   }
 
@@ -551,6 +642,147 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     if (this.pendingEnd) {
       clearTimeout(this.pendingEnd.timer);
       this.pendingEnd = undefined;
+    }
+  }
+
+  /**
+   * Whether a combat drop at this time is a cutscene's doing: the player is
+   * in one that started during this pull, or went into or came out of one
+   * within the window. Not once the boss has died, as some fights end with
+   * a cutscene, and that pull is a kill.
+   *
+   * Combat mode only. A trial or raid has one boss, so the duty completing
+   * is sure to end a held pull; in sealed content a boss we don't know
+   * followed by a cutscene would hold the pull into the next boss.
+   */
+  private isCutsceneDrop(timestamp: Date) {
+    const activity = FFXIVGenericLogHandler.activity;
+
+    if (
+      this.mode !== RecordMode.Combat ||
+      !this.cutscene ||
+      !(activity instanceof FFXIVBossEncounter) ||
+      this.bossKilledThisPull
+    ) {
+      return false;
+    }
+
+    const { start, end } = this.cutscene;
+
+    if (start.getTime() < activity.startDate.getTime()) {
+      // Started before the pull, e.g. the duty's opening cutscene.
+      return false;
+    }
+
+    if (!end) {
+      return true;
+    }
+
+    const sinceStart = timestamp.getTime() - start.getTime();
+    const sinceEnd = timestamp.getTime() - end.getTime();
+    return Math.min(sinceStart, sinceEnd) <= CUTSCENE_DROP_WINDOW_MS;
+  }
+
+  /**
+   * Hold the pull open through a cutscene rather than end it. Combat coming
+   * back resumes it, see resumePull; anything that ends it meanwhile ends
+   * it where combat dropped, see endRecording.
+   */
+  private holdPull(timestamp: Date) {
+    this.clearPendingEnd();
+    this.clearIntermission();
+
+    console.info(
+      '[FFXIVLogHandler] Combat dropped for a cutscene, holding the pull',
+    );
+
+    const timer = setTimeout(() => {
+      console.info('[FFXIVLogHandler] Combat never came back, ending pull');
+
+      this.endRecording(timestamp, this.bossKilledThisPull).catch((error) =>
+        console.error('[FFXIVLogHandler] Failed to end held pull', error),
+      );
+    }, INTERMISSION_MAX_MS);
+
+    this.intermission = { start: timestamp, timer };
+  }
+
+  /**
+   * Combat is back after a cutscene: cut the cutscene out of the video and
+   * carry on with the same pull. The resume gets the same cutback a fresh
+   * pull does, as the flag trails the first hit.
+   */
+  private resumePull(timestamp: Date) {
+    const activity = FFXIVGenericLogHandler.activity;
+
+    if (!this.intermission) {
+      return;
+    }
+
+    const { start } = this.intermission;
+    this.clearIntermission();
+
+    if (!activity) {
+      return;
+    }
+
+    const end = new Date(
+      Math.max(timestamp.getTime() - PULL_CUTBACK_S * 1000, start.getTime()),
+    );
+
+    activity.addIntermission(start, end);
+
+    console.info(
+      '[FFXIVLogHandler] Pull resumed, cutting',
+      ((end.getTime() - start.getTime()) / 1000).toFixed(0),
+      'seconds of cutscene',
+    );
+  }
+
+  private clearIntermission() {
+    if (this.intermission) {
+      clearTimeout(this.intermission.timer);
+      this.intermission = undefined;
+    }
+  }
+
+  /**
+   * The player's online status changed. Going into a cutscene is what tells
+   * a mid-fight cutscene from a wipe when combat drops, see isCutsceneDrop:
+   * neither comes with deaths or a director line the other doesn't.
+   */
+  private handleOnlineStatus(targetId: string, status: number) {
+    if (!this.playerGUID || targetId !== this.playerGUID) {
+      return;
+    }
+
+    const now = new Date();
+
+    if (status !== ONLINE_STATUS_CUTSCENE) {
+      if (this.cutscene && !this.cutscene.end) {
+        console.info('[FFXIVLogHandler] Player is out of the cutscene');
+        this.cutscene.end = now;
+      }
+
+      return;
+    }
+
+    if (this.cutscene && !this.cutscene.end) {
+      // Already in it; IINACT re-sends the last status on connect.
+      return;
+    }
+
+    console.info('[FFXIVLogHandler] Player is in a cutscene');
+    this.cutscene = { start: now };
+
+    // If combat already dropped and the end is waiting out the grace
+    // period, that drop was the cutscene's, so hold the pull instead.
+    if (
+      this.pendingEnd &&
+      !this.pendingEnd.success &&
+      this.isCutsceneDrop(this.pendingEnd.timestamp)
+    ) {
+      this.holdPull(this.pendingEnd.timestamp);
     }
   }
 
@@ -585,8 +817,13 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
   }
 
   private async handleCombatChange(inCombat: boolean, timestamp: Date) {
-    if (this.mode !== RecordMode.Combat && this.mode !== RecordMode.Sealed) {
-      // Runs record throughout.
+    if (this.mode === RecordMode.None) {
+      return;
+    }
+
+    if (this.mode === RecordMode.Run) {
+      // Runs record throughout; combat only delimits their boss segments.
+      this.handleRunCombatChange(inCombat, timestamp);
       return;
     }
 
@@ -598,12 +835,47 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
         this.clearPendingEnd();
       }
 
-      if (this.mode === RecordMode.Combat) {
+      // Nobody fights from inside a cutscene, so if we still have the player
+      // in one we missed them leaving it.
+      if (this.cutscene && !this.cutscene.end) {
+        this.cutscene.end = timestamp;
+      }
+
+      // Combat coming back while the pull is held open is the fight
+      // resuming after its cutscene.
+      if (this.intermission) {
+        this.resumePull(timestamp);
+        return;
+      }
+
+      if (
+        this.mode === RecordMode.Combat ||
+        this.mode === RecordMode.Gauntlet
+      ) {
         await this.startPull(timestamp);
       }
 
       // Sealed content has trash, so combat alone doesn't mean a boss pull;
-      // those start from the arena seal or the boss taking damage.
+      // those start from the arena seal or a player hitting the boss.
+      return;
+    }
+
+    if (this.mode === RecordMode.Gauntlet) {
+      // Combat drops between every wave of a gauntlet, so it says nothing
+      // about the pull. The director ends those.
+      return;
+    }
+
+    if (this.intermission) {
+      // Still down for the cutscene: the same drop from the other source,
+      // or a flicker while it plays.
+      return;
+    }
+
+    if (this.isCutsceneDrop(timestamp)) {
+      // Combat dropped for a mid-fight cutscene, which is an intermission
+      // in the pull rather than the end of it.
+      this.holdPull(timestamp);
       return;
     }
 
@@ -637,7 +909,34 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
 
     if (parsed.isDutyComplete()) {
       await this.handleDutyComplete(parsed.timestamp);
+    } else if (parsed.isPartyDefeated()) {
+      await this.handlePartyDefeated(parsed.timestamp);
     }
+  }
+
+  /**
+   * The party was defeated and the duty is resetting. Gauntlets don't end
+   * on combat dropping, so this is what ends their pull as a wipe. The other
+   * modes already end on the combat drop that comes with it, unless they
+   * took the drop for a cutscene and held the pull open.
+   */
+  private async handlePartyDefeated(timestamp: Date) {
+    if (!FFXIVGenericLogHandler.activity) {
+      return;
+    }
+
+    if (this.intermission) {
+      console.info('[FFXIVLogHandler] Party defeated while holding the pull');
+      await this.endRecording(timestamp, false);
+      return;
+    }
+
+    if (this.mode !== RecordMode.Gauntlet) {
+      return;
+    }
+
+    console.info('[FFXIVLogHandler] Party defeated');
+    await this.endRecording(timestamp, false);
   }
 
   /**
@@ -663,18 +962,8 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       return;
     }
 
-    const activity = FFXIVGenericLogHandler.activity;
-
-    if (this.mode === RecordMode.Run && activity instanceof FFXIVDungeon) {
-      const segment = new DungeonTimelineSegment(
-        TimelineSegmentType.BossEncounter,
-        timestamp,
-        this.getRelativeTimestamp(timestamp),
-        undefined,
-        this.primaryBoss?.name,
-      );
-
-      activity.addTimelineSegment(segment, timestamp);
+    if (this.mode === RecordMode.Run) {
+      this.startBossSegment(this.primaryBoss?.name, timestamp);
     }
   }
 
@@ -694,16 +983,121 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       return;
     }
 
+    if (this.mode === RecordMode.Run) {
+      this.endBossSegment(timestamp, this.bossKilledThisPull);
+    }
+  }
+
+  /** Whether the run being recorded is in a boss segment right now. */
+  private inBossSegment(): boolean {
     const activity = FFXIVGenericLogHandler.activity;
 
-    if (this.mode === RecordMode.Run && activity instanceof FFXIVDungeon) {
-      const segment = new DungeonTimelineSegment(
-        TimelineSegmentType.Trash,
-        timestamp,
-        this.getRelativeTimestamp(timestamp),
-      );
+    return (
+      activity instanceof FFXIVDungeon &&
+      activity.currentSegment?.segmentType === TimelineSegmentType.BossEncounter
+    );
+  }
 
-      activity.addTimelineSegment(segment, timestamp);
+  /**
+   * Start a boss segment in a run. The arena seal message starts one when
+   * IINACT logs chat, and a player hitting the boss starts one regardless;
+   * whichever comes first wins and the other is a no-op. A hit trails the
+   * pull by a few seconds, hence the cutback.
+   */
+  private startBossSegment(
+    name: string | undefined,
+    timestamp: Date,
+    cutbackSeconds = 0,
+  ) {
+    const activity = FFXIVGenericLogHandler.activity;
+
+    if (!(activity instanceof FFXIVDungeon) || this.inBossSegment()) {
+      return;
+    }
+
+    this.clearPendingSegmentEnd();
+    this.bossKilledThisPull = false;
+
+    // Never cut back past the start of the trash segment being ended.
+    const floor = activity.currentSegment?.logStart ?? activity.startDate;
+
+    const start = new Date(
+      Math.max(timestamp.getTime() - cutbackSeconds * 1000, floor.getTime()),
+    );
+
+    console.info('[FFXIVLogHandler] Boss segment:', name ?? 'unknown boss');
+
+    const segment = new DungeonTimelineSegment(
+      TimelineSegmentType.BossEncounter,
+      start,
+      this.getRelativeTimestamp(start),
+      undefined,
+      name,
+    );
+
+    activity.addTimelineSegment(segment, start);
+  }
+
+  /**
+   * End a run's boss segment and go back to trash. The boss dying, the
+   * arena unsealing and combat dropping while the boss lives all get here;
+   * the first one wins.
+   */
+  private endBossSegment(timestamp: Date, success: boolean) {
+    const activity = FFXIVGenericLogHandler.activity;
+
+    if (!(activity instanceof FFXIVDungeon) || !this.inBossSegment()) {
+      return;
+    }
+
+    this.clearPendingSegmentEnd();
+
+    console.info(
+      '[FFXIVLogHandler] Boss segment over:',
+      activity.currentSegment?.name ?? 'unknown boss',
+      success ? 'kill' : 'wipe',
+    );
+
+    const segment = new DungeonTimelineSegment(
+      TimelineSegmentType.Trash,
+      timestamp,
+      this.getRelativeTimestamp(timestamp),
+    );
+
+    activity.addTimelineSegment(segment, timestamp);
+  }
+
+  /**
+   * In a run the combat flag can't start a boss segment, as trash is combat
+   * too, but a drop while the boss lives means the party wiped or the boss
+   * reset, which ends the segment. Brief drops ride out the grace period,
+   * and so does the death line, which trails the drop by a couple of
+   * seconds on a kill.
+   */
+  private handleRunCombatChange(inCombat: boolean, timestamp: Date) {
+    if (inCombat) {
+      this.clearPendingSegmentEnd();
+      return;
+    }
+
+    if (!this.inBossSegment()) {
+      return;
+    }
+
+    this.clearPendingSegmentEnd();
+
+    const timer = setTimeout(() => {
+      this.pendingSegmentEnd = undefined;
+      this.endBossSegment(timestamp, false);
+    }, COMBAT_END_GRACE_MS);
+
+    this.pendingSegmentEnd = { timer };
+  }
+
+  private clearPendingSegmentEnd() {
+    if (this.pendingSegmentEnd) {
+      clearTimeout(this.pendingSegmentEnd.timer);
+      this.pendingSegmentEnd = undefined;
     }
   }
 
@@ -734,6 +1128,12 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     const bossName = BNpcNameIdToNameMap.get(parsed.npcNameId);
 
     if (bossName === undefined) {
+      // Actor IDs are recycled, so an ID we tracked as a boss can come back
+      // as trash. Drop the stale entry or a hit on the trash starts a pull.
+      if (this.bossActors.delete(parsed.actorId)) {
+        this.refreshPrimaryBoss();
+      }
+
       return;
     }
 
@@ -748,12 +1148,26 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     this.refreshPrimaryBoss();
   }
 
+  /**
+   * Bosses with an ending cutscene never die: the game despawns them at 1 HP
+   * with no death line (Prishe, Shantotto and Shiva all go this way), so a
+   * despawn at 1 HP or less counts as a kill. A wipe despawns the boss with
+   * whatever HP it had left.
+   */
   private handleRemoveCombatant(line: FFXIVLogLine) {
     const parsed = new RemoveCombatantLine(line);
+    const boss = this.bossActors.get(parsed.actorId);
 
-    if (this.bossActors.delete(parsed.actorId)) {
-      this.refreshPrimaryBoss();
+    if (!boss) {
+      return;
     }
+
+    if (!boss.dead && parsed.currentHp <= 1) {
+      this.handleBossDefeated(boss, parsed.timestamp);
+    }
+
+    this.bossActors.delete(boss.id);
+    this.refreshPrimaryBoss();
   }
 
   /**
@@ -784,7 +1198,8 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       }
     }
 
-    // If the pull started before the boss spawned, fix up the name.
+    // If the pull started before the boss spawned, fix up the name. It was
+    // counted under the zone's name, so count it under the boss's instead.
     const activity = FFXIVGenericLogHandler.activity;
 
     if (
@@ -793,7 +1208,22 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
       activity instanceof FFXIVBossEncounter &&
       activity.bossName === this.currentZone.name
     ) {
+      this.uncountPull(activity.bossName);
       activity.bossName = primary.name;
+      activity.pull = this.countPull(primary.name);
+    }
+
+    // Likewise a boss segment started by the seal message before the boss
+    // spawned.
+    if (primary && activity instanceof FFXIVDungeon) {
+      const segment = activity.currentSegment;
+
+      if (
+        segment?.segmentType === TimelineSegmentType.BossEncounter &&
+        segment.name === undefined
+      ) {
+        segment.name = primary.name;
+      }
     }
   }
 
@@ -865,14 +1295,7 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
     const boss = this.bossActors.get(parsed.targetId);
 
     if (boss) {
-      const wasPrimary = this.primaryBoss?.id === boss.id;
-      boss.dead = true;
-      this.refreshPrimaryBoss();
-
-      if (wasPrimary && activity instanceof FFXIVBossEncounter) {
-        this.handleBossKilled(boss.name, parsed.timestamp);
-      }
-
+      this.handleBossDefeated(boss, parsed.timestamp);
       return;
     }
 
@@ -906,14 +1329,64 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
   }
 
   /**
-   * The boss died. In sealed content the unseal ends the pull, but the
-   * death line can arrive after it, and in any mode it can trail the combat
-   * drop by a couple of seconds, so a pull that's already winding down
-   * becomes a kill. Otherwise this is just remembered for when it does end.
+   * A boss actor died or was despawned beaten. Council fights have several
+   * bosses (the Ark Angels, the Meso Terminal's headsmen), and the fight is
+   * only over once the last of them goes. Helper actors share the boss's
+   * name but have a token amount of HP, so they never count as peers and
+   * are never the primary while a real boss lives.
+   */
+  private handleBossDefeated(boss: BossActor, timestamp: Date) {
+    const wasPrimary = this.primaryBoss?.id === boss.id;
+    boss.dead = true;
+    this.refreshPrimaryBoss();
+
+    if (!wasPrimary) {
+      return;
+    }
+
+    const activity = FFXIVGenericLogHandler.activity;
+
+    if (
+      !(activity instanceof FFXIVBossEncounter) &&
+      !(activity instanceof FFXIVDungeon)
+    ) {
+      return;
+    }
+
+    // Peers are the encounter's other real bosses: same table entry, still
+    // alive, and not a helper. The headsmen's HP ranges over almost 2x, so
+    // equal HP can't be the test; helpers sit at 44 HP, so a tenth of the
+    // fallen boss's HP separates them.
+    const peerAlive = Array.from(this.bossActors.values()).some(
+      (actor) =>
+        !actor.dead &&
+        actor.name === boss.name &&
+        actor.maxHp * 10 >= boss.maxHp,
+    );
+
+    if (peerAlive) {
+      console.info('[FFXIVLogHandler] Boss down, others remain:', boss.name);
+      return;
+    }
+
+    this.handleBossKilled(boss.name, timestamp);
+  }
+
+  /**
+   * The boss died. In a run that ends the boss segment. In sealed content
+   * the unseal ends the pull, but the death line can arrive after it, and
+   * in any mode it can trail the combat drop by a couple of seconds, so a
+   * pull that's already winding down becomes a kill. Otherwise this is just
+   * remembered for when the pull does end.
    */
   private handleBossKilled(name: string, timestamp: Date) {
     console.info('[FFXIVLogHandler] Boss killed:', name);
     this.bossKilledThisPull = true;
+
+    if (this.mode === RecordMode.Run) {
+      this.endBossSegment(timestamp, true);
+      return;
+    }
 
     if (this.mode === RecordMode.Sealed || this.pendingEnd) {
       const endDate = this.pendingEnd?.timestamp ?? timestamp;
@@ -922,35 +1395,57 @@ export default class FFXIVLogHandler extends FFXIVGenericLogHandler {
   }
 
   /**
-   * HP updates for the boss feed the boss percentage on wipes. These are
-   * frequent for every actor, so check the actor ID before parsing.
+   * Abilities landing on a boss actor. These carry the target's HP, which
+   * feeds the boss percentage on wipes; the 39 HP update lines never do,
+   * IINACT only writes those for the party and its pets. Ability lines are
+   * the most frequent in the log, so look the target up before parsing
+   * anything.
    */
-  private async handleUpdateHp(line: FFXIVLogLine) {
-    if (!this.primaryBoss || line.arg(2) !== this.primaryBoss.id) {
+  private async handleAbility(line: FFXIVLogLine) {
+    const target = this.bossActors.get(line.arg(6));
+
+    if (!target || target.dead) {
       return;
     }
 
-    const parsed = new UpdateHpLine(line);
-
-    if (Number.isNaN(parsed.currentHp) || Number.isNaN(parsed.maxHp)) {
-      return;
-    }
-
+    const parsed = new AbilityLine(line);
     const activity = FFXIVGenericLogHandler.activity;
 
     if (activity instanceof FFXIVBossEncounter) {
-      activity.updateHp(parsed.currentHp, parsed.maxHp);
+      // The percentage follows the primary boss only.
+      if (
+        target.id === this.primaryBoss?.id &&
+        !Number.isNaN(parsed.targetCurrentHp) &&
+        !Number.isNaN(parsed.targetMaxHp)
+      ) {
+        activity.updateHp(parsed.targetCurrentHp, parsed.targetMaxHp);
+      }
+
       return;
     }
 
-    if (
-      !activity &&
-      this.mode === RecordMode.Sealed &&
-      parsed.currentHp < parsed.maxHp
-    ) {
-      // The boss is taking damage, so the fight is on. This is the start
-      // signal for sealed content that never posts the "sealed off" message.
-      console.info('[FFXIVLogHandler] Boss engaged:', this.primaryBoss.name);
+    if (activity instanceof FFXIVDungeon) {
+      if (this.mode === RecordMode.Run && parsed.isFromPlayer()) {
+        // A player hit a boss during a run, so a boss fight is on. This is
+        // the start signal when IINACT isn't logging the seal message.
+        this.startBossSegment(
+          target.name,
+          parsed.timestamp,
+          BOSS_ENGAGE_CUTBACK_S,
+        );
+      }
+
+      return;
+    }
+
+    if (!activity && this.mode === RecordMode.Sealed && parsed.isFromPlayer()) {
+      // A player hit a boss, so the fight is on. This is the start signal
+      // for sealed content that never posts the "sealed off" message. Any
+      // boss actor counts, not just the primary: in a council fight each
+      // alliance opens on a different boss, and which one is primary comes
+      // down to spawn order. Helper actors only exist during the fight, and
+      // no player hit on one has turned up in a real log anyway.
+      console.info('[FFXIVLogHandler] Boss engaged:', target.name, target.id);
       await this.startPull(parsed.timestamp, BOSS_ENGAGE_CUTBACK_S);
     }
   }

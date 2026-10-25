@@ -13,6 +13,7 @@ import {
   StorageFilter,
   ActivityStatus,
   CombatLoggingStatus,
+  RunningGames,
   InstantReplayState,
   InstantReplayData,
 } from 'main/types';
@@ -122,6 +123,9 @@ const WarcraftRecorder = () => {
     // The disk storage status.
     diskStatus: { usage: 0, limit: 0 },
 
+    // Which games are detected running, named on the status card.
+    runningGames: { wow: false, ffxiv: false },
+
     // The chat panel state.
     chatOpen: false,
 
@@ -184,12 +188,26 @@ const WarcraftRecorder = () => {
   // Used to remember the player height when switching categories.
   const playerHeight = useRef(500);
 
-  const updateRecStatus = (status: unknown, err: unknown) => {
+  const updateRecStatus = (status: unknown, err: unknown, games: unknown) => {
     setRecorderStatus(status as RecStatus);
 
     if (status === RecStatus.InvalidConfig || status === RecStatus.FatalError) {
       setError(err as string);
     }
+
+    const { wow, ffxiv } = games as RunningGames;
+
+    setAppState((prevState) => {
+      const prev = prevState.runningGames;
+
+      // Status refreshes rarely change the running games, so keep the
+      // previous state to avoid a needless re-render.
+      if (prev.wow === wow && prev.ffxiv === ffxiv) {
+        return prevState;
+      }
+
+      return { ...prevState, runningGames: { wow, ffxiv } };
+    });
   };
 
   const updateActivityStatus = (status: unknown) => {

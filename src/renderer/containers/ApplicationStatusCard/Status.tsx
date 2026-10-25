@@ -51,7 +51,7 @@ const Status = ({
   combatLoggingStatus,
   setPreviewEnabled,
 }: StatusProps) => {
-  const { language } = appState;
+  const { language, runningGames } = appState;
   const [recTimerSec, setRecTimerSec] = useState(0);
 
   useEffect(() => {
@@ -113,6 +113,20 @@ const Status = ({
     }
 
     return getLocalePhrase(language, Phrase.StatusDescriptionNothing);
+  };
+
+  // Name whichever game(s) the poller detected. Neither flag being set is
+  // only transient (e.g. mid-shutdown), so fall back to the WoW phrase.
+  const getDetectedRunningPhrase = () => {
+    if (runningGames.wow && runningGames.ffxiv) {
+      return Phrase.StatusDescriptionDetectedBothRunning;
+    }
+
+    if (runningGames.ffxiv) {
+      return Phrase.StatusDescriptionDetectedFFXIVRunning;
+    }
+
+    return Phrase.StatusDescriptionDetectedWowRunning;
   };
 
   // The short recording status descriptor used on the status card
@@ -207,7 +221,7 @@ const Status = ({
     [RecStatus.ReadyToRecord]: (
       <div className="flex flex-col gap-y-2">
         <h2 className="text-sm font-semibold">
-          {getLocalePhrase(language, Phrase.StatusDescriptionDetectedRunning)}
+          {getLocalePhrase(language, getDetectedRunningPhrase())}
         </h2>
         <Separator className="my-1" />
         <p className="text-xs text-popover-foreground/60">

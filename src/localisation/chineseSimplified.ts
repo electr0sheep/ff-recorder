@@ -248,7 +248,7 @@ const CHINESE_SIMPLIFIED: Translations = {
   [Phrase.StatusDescriptionConfiguredToRecord]: 'Warcraft Recorder 已配置好录制',
   [Phrase.StatusDescriptionMisconfigured]: 'Warcraft Recorder 配置错误',
   [Phrase.StatusDescriptionResolveError]: '请解决以下错误',
-  [Phrase.StatusDescriptionDetectedRunning]: '检测到魔兽世界正在运行',
+  [Phrase.StatusDescriptionDetectedWowRunning]: '检测到魔兽世界正在运行',
   [Phrase.StatusDescriptionWatchingLogs]: 'Warcraft Recorder 正在等待可录制的战斗日志事件。监控的日志路径如下',
   [Phrase.StatusDescriptionTip]: '提示',
   [Phrase.StatusDescriptionIfNoRecording]: '如果没有开始录制，请检查游戏内的日志设置，并确认你配置的日志路径正确。',

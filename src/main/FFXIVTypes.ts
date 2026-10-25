@@ -140,6 +140,11 @@ type Zone = {
   type: ContentType;
   expansion: Expansion;
   difficulty?: Difficulty;
+  /**
+   * The duty is a gauntlet of trash waves with no boss, recorded as a single
+   * pull. Combat drops between the waves, so it can't delimit pulls.
+   */
+  gauntlet?: boolean;
 };
 
 type FFXIVGameState = {
